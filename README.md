@@ -45,6 +45,8 @@ Observe the phase curve of an asteroid, ...
 >>> pc.plot()
 ```
 
+![](docs/gfx/massalia_hg_hg1g2_shg1g2.png)
+
 Provide a target to ``PhaseCurve`` to have ``phunk`` compute the required ephemerides for you.
 
 ``` python
