@@ -1,5 +1,5 @@
 <p align="center">
-  <img width="260" src="https://raw.githubusercontent.com/maxmahlke/phunk/master/docs/_static/logo_phunk.svg">
+  <img width="260" src="https://raw.githubusercontent.com/maxmahlke/phunk/main/docs/gfx/logo_phunk.svg">
 </p>
 
 <p align="center">
