@@ -25,15 +25,16 @@ Observe the phase curve of an asteroid, ...
 
 ``` python
 >>> from phunk import PhaseCurve
->>> phase = []  # in degrees
->>> mag = []  # reduced
+>>> # Observations of (20) Massalia from Gehrels 1956
+>>> phase = [0.57, 1.09, 3.20, 10.99, 14.69, 20.42]
+>>> mag = [6.555, 6.646, 6.793, 7.130, 7.210, 7.414]
 >>> pc = PhaseCurve(phase=phase, mag=mag)
 ```
 
-..., fit it, ....
+..., fit it in one of multiple photometric models, ....
 
 ``` python
->>> pc.fit(['HG1G2', 'HG12'])
+>>> pc.fit(["HG", "HG1G2", "sHG1G2"])
 ```
 
 ..., and plot / process the results.
@@ -47,8 +48,7 @@ Observe the phase curve of an asteroid, ...
 Provide a target to ``PhaseCurve`` to have ``phunk`` compute the required ephemerides for you.
 
 ``` python
->>> epoch = []  # in MJD
->>> phase = []  # in degrees
+>>> epoch = [35193, 35194, 35198, 35214, 35223, 35242]  # in MJD
 >>> pc = PhaseCurve(epoch=epoch, mag=mag, target='massalia')
 >>> pc.fit(['sHG1G2'])  # phunk computes required RA, Dec, and phase at epoch of observation
 >>> pc.sHG1G2.H
