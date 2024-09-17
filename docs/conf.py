@@ -13,18 +13,18 @@
 import os
 import sys
 
-sys.path.insert(0, os.path.abspath("../rocks"))
+sys.path.insert(0, os.path.abspath("../phunk"))
 
 
 # -- Project information -----------------------------------------------------
 
-project = "rocks"
-copyright = "2023, Max Mahlke"
+project = "phunk"
+copyright = "2024, Max Mahlke"
 author = "Max Mahlke"
 
 # The full version, including alpha/beta/rc tags
 release = "0.1"
-html_title = "rocks"
+html_title = "phunk"
 
 
 # -- General configuration ---------------------------------------------------
@@ -98,8 +98,8 @@ html_theme_options = {
     "sidebar_hide_name": True,
     "navigation_with_keys": True,
     "top_of_page_button": None,
-    "light_logo": "logo_rocks.svg",
-    "dark_logo": "logo_rocks_light.svg",
+    "light_logo": "logo_phunk.svg",
+    "dark_logo": "logo_phunk_light.svg",
     # "logo_only": True,
     # "display_version": True,
     # "prev_next_buttons_location": "bottom",
