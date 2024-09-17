@@ -1,5 +1,5 @@
 #########
-``rocks``
+``phunk``
 #########
 
 .. raw:: html
@@ -8,9 +8,7 @@
 
 .. role:: gray
 
-A ``python`` client to explore and retrieve asteroid data from `SsODNet
-<https://ssp.imcce.fr/webservices/ssodnet/>`_. It serves to quickly get answers
-to common questions as the ones below. All data is cited and new observations are ingested on a weekly basis.\ [#f1]_
+A ``python`` package to fit photometric phase curves of asteroids.\ [#f1]_
 
 
 .. |br| raw:: html
@@ -19,135 +17,46 @@ to common questions as the ones below. All data is cited and new observations ar
 
 .. highlight:: python
 
-|br|
+.. |br|
 
-:octicon:`telescope;1em` **Identification of minor bodies using** `quaero <https://ssp.imcce.fr/webservices/ssodnet/api/quaero/>`_.
+.. code-block:: python
 
+   import phunk
 
-.. grid:: 2
+Observe the phase curve of your favourite asteroids.
 
-    .. grid-item-card::
-      :link: name_resolution
-      :link-type: ref
+.. code-block:: python
 
-      What is the number of ``Didymos``?
-      What asteroid has the number ``594913``?
+   # Observations of (20) Massalia from Gehrels 1956
+   phase = [0.57, 1.09, 3.20, 10.99, 14.69, 20.42]
+   mag = [6.555, 6.646, 6.793, 7.130, 7.210, 7.414]
 
+   epoch = [35193, 35194, 35198, 35214, 35223, 35242]
 
-    .. grid-item-card::
-      :link: aliases
-      :link-type: ref
+Load the observations into ``phunk``.
 
-      What aliases of ``2000 UD93`` are used in different databases?
+.. code-block:: python
 
+   pc = phunk.PhaseCurve(phase=phase, mag=mag, epoch=epoch, target="Massalia")
 
-|br|
-:octicon:`beaker;1em` **Best estimates of dynamical and physical parameters from the** `ssoCard <https://ssp.imcce.fr/webservices/ssodnet/api/ssocard/>`_.
+Fit your favourite model(s) to the observations.
 
-.. grid:: 2
+.. code-block:: python
 
-    .. grid-item-card::
-      :link: getting_values
-      :link-type: ref
-
-      What is the albedo of ``(221) Eos``?
+   pc.fit(["HG", "HG1G2", "sHG1G2"])
+   pc.plot()
 
 
-    .. grid-item-card::
-      :link: thermal_barbarians
-      :link-type: ref
+.. image:: gfx/massalia_hg_hg1g2_shg1g2.png
+ :align: center
+ :class: only-light
+ :width: 1000
 
-      What is the distribution of thermal inertias of known Barbarian asteroids?
+.. image:: gfx/massalia_hg_hg1g2_shg1g2_dark.png
+ :align: center
+ :class: only-dark
+ :width: 1000
 
-|br|
-:octicon:`database;1em` **Complete**\ [#f2]_ **literature overview with** `datacloud <https://ssp.imcce.fr/webservices/ssodnet/api/datacloud/>`_ **and the** `ssoBFT <https://ssp.imcce.fr/webservices/ssodnet/api/ssobft/>`_.
-
-.. grid:: 2
-
-    .. grid-item-card::
-      :link: masses_ceres
-      :link-type: ref
-
-      What masses of ``(1) Ceres`` have been published by whom?
-
-    .. grid-item-card::
-      :link: bft_example
-      :link-type: ref
-
-      Two lines for one table of ~720,000,000 minor body parameters.
-
-    .. .. grid-item-card::
-    ..   :link: datacloud_example
-    ..   :link-type: ref
-    ..
-    ..   What taxonomic classifications of ``(214) Aschera`` have been proposed over time?
-
-|br|
-:octicon:`zap;1em` **And more!**
-
-.. grid:: 2
-
-    .. grid-item-card::
-      :link: who
-      :link-type: ref
-
-      Who was ``zappafrank``?
-
-    .. grid-item-card::
-      :link: author
-      :link-type: ref
-
-      Is my data in `SsODNet <https://ssp.imcce.fr/webservices/ssodnet/>`_ and getting cited?
-
-|br|
-
-``rocks`` makes this information accessible in two ways: via the command line for quick
-exploration and via ``python`` for scripted analysis. The syntax is simple and intuitive.
-
-.. tab-set::
-
-  .. tab-item:: Command Line
-
-      .. code-block:: bash
-
-          $ rocks id 221
-          (221) Eos
-
-          $ rocks class Eos
-          MB>Outer
-
-          $ rocks albedo Eos
-          0.136 +- 0.004
-
-          $ rocks masses Eos
-          +---+-------------+-------------+---------------+---------+--------------+
-          |   | mass        | err_mass_up | err_mass_down | method  | shortbib     |
-          +---+-------------+-------------+---------------+---------+--------------+
-          | 1 | 1.22125e+18 | 0.0         | 0.0           | EPHEM   | Folkner+2014 |
-          | 2 | 2.39e+18    | 5.97e+17    | -5.97e+17     | DEFLECT | Goffin+2014  |
-          | 3 | 1.04688e+18 | 5.16159e+17 | -5.16159e+17  | EPHEM   | Fienga+2019  |
-          +---+-------------+-------------+---------------+---------+--------------+
-
-  .. tab-item :: python
-
-
-     .. code-block:: python
-
-       >>> from rocks import Rock     # every asteroid is represented by a 'Rock' instance
-       >>> ceres = Rock("ceres")      # retrieve ssoCard of (1) Ceres
-       >>> ceres.diameter.value       # get the parameter values and metadata via the dot notation
-       848.4
-       >>> ceres.diameter.unit
-       'km'
-       >>> ceres.mass.value
-       9.384e+20
-       >>> ceres.mass.error
-       6.711e+17
-
-.. rubric:: Footnotes
-
-.. [#f1] Latest version: 1.9.11  - `What's new? <https://github.com/maxmahlke/rocks/blob/master/CHANGELOG.md>`_  | Comment, bug or feature request? Open an issue on `GitHub <https://github.com/maxmahlke/rocks/issues>`_.
-.. [#f2] That's what we are aiming for. Is there a data source you are missing? `Email us! <mailto:benoit.carry@oca.eu>`_
 
 .. toctree::
    :maxdepth: 2
@@ -156,9 +65,12 @@ exploration and via ``python`` for scripted analysis. The syntax is simple and i
 
    Home<self>
    Getting Started<getting_started>
-   Available Data<ssodnet>
-   Basic Usage<cli>
-   credit
-   tutorials
-   appendix
-   glossary
+   Basic Usage<core>
+   Models<models>
+
+
+.. rubric:: Footnotes
+   :caption:
+
+
+.. [#f1] Latest version: 0.1  - `What's new? <https://github.com/maxmahlke/phunk/blob/master/CHANGELOG.md>`_  | Comment, bug or feature request? `Email me <https://www.ias.universite-paris-saclay.fr/annuaire?nom=mahlke>`_ or open an issue on `GitHub <https://github.com/maxmahlke/phunk/issues>`_.
