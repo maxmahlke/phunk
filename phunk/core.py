@@ -107,6 +107,10 @@ class PhaseCurve:
             If plotting sHG1G2 model, observation band to plot
         """
         if models is None:
-            models = self.fitted_models
+            models = sorted(self.fitted_models)
+
+            # I want LinExp to plot after the HG family
+            if "LinExp" in models:
+                models.append(models.pop(models.index("LinExp")))
 
         phunk.plotting.plot_pc(self, models, band, save)
