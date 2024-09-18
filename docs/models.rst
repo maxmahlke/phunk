@@ -62,7 +62,7 @@ From `Muinonen+ 2010 <https://ui.adsabs.harvard.edu/abs/2010Icar..209..542M>`_. 
 sHG1G2
 ======
 
-From `Carry+ 2024 <https://ui.adsabs.harvard.edu/abs/2024A%26A...687A..38C/abstract>`_. ``phunk`` uses a slightly adapted model implementation from `fink <https://fink-portal.org/>`_.
+From `Carry+ 2024 <https://ui.adsabs.harvard.edu/abs/2024A%26A...687A..38C/abstract>`_. ``phunk`` the model implementation from `fink <https://fink-portal.org/>`_.
 
 Note that the sHG1G2 model requires the target's ephemerides at the time of observation.
 If you provide the ``target`` name and the ``epoch`` of observation, ``phunk`` queries

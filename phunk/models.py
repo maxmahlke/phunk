@@ -5,7 +5,7 @@ import numpy as np
 from sbpy import photometry as phot
 
 # MODELS = ["Linexp", "HG", "HG12", "HG12S", "HG1G2", "sHG1G2"]
-MODELS = ["HG", "HG1G2", "sHG1G2"]
+MODELS = ["LinExp", "HG", "HG12", "HG12S", "HG1G2", "sHG1G2"]
 
 
 class HG:
@@ -13,7 +13,7 @@ class HG:
 
     def __init__(self, H=10, G=0.15):
         self.NAME = "HG"
-        self.PARAMS = ["H", "G"]
+        self.PARAMS = ("H", "G")
 
         self.H = H
         self.G = G
@@ -73,7 +73,7 @@ class HG1G2:
 
     def __init__(self, H=15.0, G1=0.15, G2=0.15):
         self.NAME = "HG1G2"
-        self.PARAMS = ["H", "G1", "G2"]
+        self.PARAMS = ("H", "G1", "G2")
 
         self.H = H
         self.G1 = G1
@@ -144,33 +144,200 @@ class HG1G2:
         pc.fitted_models.add("HG1G2")
 
 
-# class Linexp:
-#     """Linear-Exponential Modeling from Muinonen+ 2002"""
-#
-#     def __init__(self, a=15.0, b=0.15, d=0.15, k=1):
-#         self.a = a
-#         self.b = b
-#         self.d = d
-#         self.k = k
-#
-#     def eval(self, phase, a=None, b=None, d=None, k=None):
-#         """Evaluate photometric phase curve model."""
-#         phase = np.radians(phase)
-#
-#         if a is None:
-#             a = self.a
-#         if b is None:
-#             b = self.b
-#         if d is None:
-#             d = self.d
-#         if k is None:
-#             k = self.k
-#
-#         return a * np.exp(-phase / d) + b + k * phase
-#
-#
-# class HG12S:
-#     """HG12* model from Penttilä+ 2016."""
+class HG12:
+    """HG12 model from Muinonen+ 2010."""
+
+    def __init__(self, H=15.0, G12=0.15):
+        self.NAME = "HG12"
+        self.PARAMS = ("H", "G12")
+
+        self.H = H
+        self.G1 = G12
+
+    def eval(self, phase, H=None, G12=None):
+        """H,G1,G2 phase curve model."""
+        phase = np.radians(phase)
+
+        if H is None:
+            H = self.H
+        if G12 is None:
+            G12 = self.G12
+
+        return phot.HG12.evaluate(phase, H, G12)
+
+    def is_fittable(self, pc):
+        """Check if phase curve can be fit."""
+        _has_phase_and_mag(pc, self.NAME)
+        return True
+
+    def fit(self, pc):
+        """Fit a phase curve using the H, G1, G2 model from Muinonen+ 2010.
+
+        Parameters
+        ----------
+        phase : list or np.ndarray
+            The phase angles of observation in degree.
+        mag : list or np.ndarray
+            The reduced magnitudes.
+        """
+
+        # The model function
+        model = lmfit.Model(self.eval)
+
+        # The fit parameters
+        params = lmfit.Parameters()
+        params.add("H", value=15, min=0, max=30)
+        params.add("G12", value=0.3, min=0, max=1.0)
+
+        # And fit
+        result = model.fit(
+            pc.mag,
+            params,
+            phase=pc.phase,
+            method="least_squares",
+            fit_kws={
+                "loss": "soft_l1",
+            },
+        )
+
+        for param in self.PARAMS:
+            setattr(self, param, result.params[param].value)
+            setattr(self, f"{param}_err", result.params[param].stderr)
+
+        pc.fitted_models.add("HG12")
+
+
+class HG12S:
+    """HG12* model from Penttilä+ 2016."""
+
+    def __init__(self, H=15.0, G12S=0.15):
+        self.NAME = "HG12S"
+        self.PARAMS = ("H", "G12S")
+
+        self.H = H
+        self.G12S = G12S
+
+    def eval(self, phase, H=None, G12S=None):
+        """H,G1,G2 phase curve model."""
+        phase = np.radians(phase)
+
+        if H is None:
+            H = self.H
+        if G12S is None:
+            G12S = self.G12S
+
+        return phot.HG12_Pen16.evaluate(phase, H, G12S)
+
+    def is_fittable(self, pc):
+        """Check if phase curve can be fit."""
+        _has_phase_and_mag(pc, self.NAME)
+        return True
+
+    def fit(self, pc):
+        """Fit a phase curve using the H, G1, G2 model from Muinonen+ 2010.
+
+        Parameters
+        ----------
+        phase : list or np.ndarray
+            The phase angles of observation in degree.
+        mag : list or np.ndarray
+            The reduced magnitudes.
+        """
+
+        # The model function
+        model = lmfit.Model(self.eval)
+
+        # The fit parameters
+        params = lmfit.Parameters()
+        params.add("H", value=15, min=0, max=30)
+        params.add("G12S", value=0.3, min=0, max=1.0)
+
+        # And fit
+        result = model.fit(
+            pc.mag,
+            params,
+            phase=pc.phase,
+            method="least_squares",
+            fit_kws={
+                "loss": "soft_l1",
+            },
+        )
+
+        for param in self.PARAMS:
+            setattr(self, param, result.params[param].value)
+            setattr(self, f"{param}_err", result.params[param].stderr)
+
+        pc.fitted_models.add("HG12S")
+
+
+class LinExp:
+    """Linear-Exponential Modeling from Muinonen+ 2002"""
+
+    def __init__(self, a=15.0, b=0.15, d=0.15, k=1):
+        self.NAME = "LinExp"
+        self.PARAMS = ("a", "b", "d", "k")
+
+        self.a = a
+        self.b = b
+        self.d = d
+        self.k = k
+
+    def eval(self, phase, a=None, b=None, d=None, k=None):
+        """Evaluate photometric phase curve model."""
+
+        if a is None:
+            a = self.a
+        if b is None:
+            b = self.b
+        if d is None:
+            d = self.d
+        if k is None:
+            k = self.k
+
+        return a * np.exp(-phase / d) + b + k * phase
+
+    def is_fittable(self, pc):
+        """Check if phase curve can be fit."""
+        _has_phase_and_mag(pc, self.NAME)
+        return True
+
+    def fit(self, pc):
+        """Fit a phase curve using the H, G1, G2 model from Muinonen+ 2010.
+
+        Parameters
+        ----------
+        phase : list or np.ndarray
+            The phase angles of observation in degree.
+        mag : list or np.ndarray
+            The reduced magnitudes.
+        """
+
+        # The model function
+        model = lmfit.Model(self.eval)
+
+        # The fit parameters
+        params = lmfit.Parameters()
+        params.add("a", value=-15, max=30)
+        params.add("b", value=-10)
+        params.add("k", value=0.3)
+        params.add("d", value=-3)
+
+        # And fit
+        result = model.fit(
+            pc.mag,
+            params,
+            phase=pc.phase,
+            method="least_squares",
+            fit_kws={
+                "loss": "soft_l1",
+            },
+        )
+
+        for param in self.PARAMS:
+            setattr(self, param, result.params[param].value)
+            setattr(self, f"{param}_err", result.params[param].stderr)
+
+        pc.fitted_models.add("LinExp")
 
 
 class sHG1G2:
@@ -181,7 +348,7 @@ class sHG1G2:
         Provide ra and dec in degrees
         """
         self.NAME = "sHG1G2"
-        self.PARAMS = ["alpha", "delta", "R"]
+        self.PARAMS = ("alpha", "delta", "R")
 
         # self.H = H
         # self.G1 = G1
@@ -289,7 +456,7 @@ class sHG1G2:
             # Add delta to implement inequality constraint
             # https://lmfit.github.io/lmfit-py/constraints.html#using-inequality-constraints
             # if constrain_g1g2:
-            if True:
+            if False:
                 params.add(f"delta_{band}", min=0, value=0.5, max=1, vary=True)
                 params.add(f"G2_{band}", expr=f"delta_{band}-G1_{band}", min=0.0, max=1)
 
