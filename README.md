@@ -63,4 +63,4 @@ Check out the documentation at [phunk.readthedocs.io](https://phunk.readthedocs.
 
 ## Acknowledgements
 
-This package uses the photometric model implementations provided by [sbpy](https://sbpy.readthedocs.io/en/stable).
+This package uses photometric model implementations provided by [sbpy](https://sbpy.readthedocs.io/en/stable) and [fink](https://fink-portal.org/).
