@@ -74,32 +74,13 @@ class HG1G2:
         self.NAME = "HG1G2"
         self.PARAMS = ("H", "G1", "G2")
 
-        # self.H = H
-        # self.G1 = G1
-        # self.G2 = G2
-
     def eval(self, phase, H=None, G1=None, G2=None, band=None):
         """H,G1,G2 phase curve model."""
         phase = np.radians(phase)
 
-        if H is None:
-            if band is None and not hasattr(self, "H"):
-                raise AttributeError(
-                    "When evaluating a multi-band phase curve fit, you have to specify the 'band'."
-                )
-            H = self.H
-        if G1 is None:
-            if band is None and not hasattr(self, "G1"):
-                raise AttributeError(
-                    "When evaluating a multi-band phase curve fit, you have to specify the 'band'."
-                )
-            G1 = self.G1
-        if G2 is None:
-            if band is None and not hasattr(self, "G2"):
-                raise AttributeError(
-                    "When evaluating a multi-band phase curve fit, you have to specify the 'band'."
-                )
-            G2 = self.G2
+        H = getattr(self, f"H{band}")
+        G1 = getattr(self, f"G1{band}")
+        G2 = getattr(self, f"G2{band}")
 
         return phot.HG1G2.evaluate(phase, H, G1, G2)
 
@@ -137,8 +118,6 @@ class HG1G2:
         # weights = weights_from_phase(phase)  # used for weighting
 
         for band in set(pc.band):
-            band_suffix = f"_{band}" if pc.N_band > 1 else ""
-
             # And fit
             result = model.fit(
                 pc.mag[pc.band == band],
@@ -152,10 +131,10 @@ class HG1G2:
             )
 
             for param in self.PARAMS:
-                setattr(self, "".join([param, band_suffix]), result.params[param].value)
+                setattr(self, "".join([param, band]), result.params[param].value)
                 setattr(
                     self,
-                    "".join([f"{param}_err", band_suffix]),
+                    "".join([f"{param}_err", band]),
                     result.params[param].stderr,
                 )
 
