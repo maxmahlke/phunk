@@ -1,4 +1,4 @@
-# 0.1.1 - 2024-09-18
+# 0.1.1 - 2024-09-19
 - Correct list of implemented models in phunk.models
 - Add HG12 model from Muinonen+ 2010
 - Add HG12* model from Penttillä+ 2016

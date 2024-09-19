@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "space-phunk"
-version = "0.1"
+version = "0.1.1"
 description = "Fit photometric phase curves of asteroids."
 authors = ["Max Mahlke <max.mahlke@oca.eu>"]
 license = "MIT"
