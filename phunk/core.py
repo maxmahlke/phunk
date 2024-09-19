@@ -96,6 +96,13 @@ class PhaseCurve:
         self.ra = np.degrees(ephem["ra_j2000"])
         self.dec = np.degrees(ephem["dec_j2000"])
 
+    @property
+    def N_band(self):
+        """Compute number of unique observation bands."""
+        if self.band is None:
+            raise ValueError("No observation 'band's specified.")
+        return len(set(self.band))
+
     def plot(self, models=None, band=None, save=None):
         """Plot phase curve and model fits.
 
