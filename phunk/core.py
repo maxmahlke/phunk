@@ -77,7 +77,8 @@ class PhaseCurve:
                     f"Unknown model '{model}'. Expected one of {phunk.models.MODELS}"
                 )
 
-            setattr(self, model, getattr(phunk.models, model)())
+            # Add photometric model instance to PhaseCurve and pass band information
+            setattr(self, model, getattr(phunk.models, model)(bands=set(self.band)))
 
             if getattr(self, model).is_fittable(self):
                 getattr(self, model).fit(self)

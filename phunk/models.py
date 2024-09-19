@@ -70,9 +70,17 @@ class HG:
 class HG1G2:
     """HG1G2 model from Muinonen+ 2010."""
 
-    def __init__(self, H=15.0, G1=0.15, G2=0.15):
+    def __init__(self, H=15.0, G1=0.15, G2=0.15, bands=None):
         self.NAME = "HG1G2"
         self.PARAMS = ("H", "G1", "G2")
+
+        if bands is None:
+            bands = [""]
+
+        for band in bands:
+            setattr(self, f"H{band}", H)
+            setattr(self, f"G1{band}", G1)
+            setattr(self, f"G2{band}", G2)
 
     def eval(self, phase, H=None, G1=None, G2=None, band=None):
         """H,G1,G2 phase curve model."""
@@ -103,29 +111,36 @@ class HG1G2:
             The reduced magnitudes.
         """
 
+        def eval_fit(phase, H, G1, G2):
+            """Evaluation function for fitting."""
+            phase = np.radians(phase)
+            return phot.HG1G2.evaluate(phase, H, G1, G2)
+
         # The model function
-        model = lmfit.Model(self.eval)
-
-        # The fit parameters
-        params = lmfit.Parameters()
-        params.add("H", value=15, min=0, max=30)
-        params.add("G1", value=0.15, min=0, max=1.0)
-
-        # Add delta to implement inequality constraint
-        # https://lmfit.github.io/lmfit-py/constraints.html#using-inequality-constraints
-        params.add("delta", min=0, value=0.5, max=1, vary=True)
-        params.add("G2", expr="delta-G1", min=0.0, max=1)
+        model = lmfit.Model(eval_fit)
 
         # Ensure that errors are well behaved
         # mag_err[mag_err == 0] = np.nanmean(mag_err)
         # weights = weights_from_phase(phase)  # used for weighting
 
         for band in set(pc.band):
+            # The fit parameters
+            print(f"Fitting band {band}..")
+            params = lmfit.Parameters()
+            params.add(f"H", value=15, min=0, max=30)
+            params.add(f"G1", value=0.15, min=0, max=1.0)
+            params.add(f"G2", value=0.15, min=0, max=1.0)
+            # Add delta to implement inequality constraint
+            # https://lmfit.github.io/lmfit-py/constraints.html#using-inequality-constraints
+            # params.add("delta", min=0, value=0.5, max=1, vary=True)
+            # params.add(f"G2{band}", expr="delta-G1", min=0.0, max=1)
+
             # And fit
             result = model.fit(
                 pc.mag[pc.band == band],
                 params,
                 phase=pc.phase[pc.band == band],
+                band=band,
                 method="least_squares",
                 fit_kws={
                     "loss": "soft_l1",
@@ -136,9 +151,7 @@ class HG1G2:
             for param in self.PARAMS:
                 setattr(self, "".join([param, band]), result.params[param].value)
                 setattr(
-                    self,
-                    "".join([f"{param}_err", band]),
-                    result.params[param].stderr,
+                    self, f"{''.join([param, band])}_err", result.params[param].stderr
                 )
 
         pc.fitted_models.add("HG1G2")
