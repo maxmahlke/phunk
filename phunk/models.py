@@ -74,19 +74,31 @@ class HG1G2:
         self.NAME = "HG1G2"
         self.PARAMS = ("H", "G1", "G2")
 
-        self.H = H
-        self.G1 = G1
-        self.G2 = G2
+        # self.H = H
+        # self.G1 = G1
+        # self.G2 = G2
 
-    def eval(self, phase, H=None, G1=None, G2=None):
+    def eval(self, phase, H=None, G1=None, G2=None, band=None):
         """H,G1,G2 phase curve model."""
         phase = np.radians(phase)
 
         if H is None:
+            if band is None and not hasattr(self, "H"):
+                raise AttributeError(
+                    "When evaluating a multi-band phase curve fit, you have to specify the 'band'."
+                )
             H = self.H
         if G1 is None:
+            if band is None and not hasattr(self, "G1"):
+                raise AttributeError(
+                    "When evaluating a multi-band phase curve fit, you have to specify the 'band'."
+                )
             G1 = self.G1
         if G2 is None:
+            if band is None and not hasattr(self, "G2"):
+                raise AttributeError(
+                    "When evaluating a multi-band phase curve fit, you have to specify the 'band'."
+                )
             G2 = self.G2
 
         return phot.HG1G2.evaluate(phase, H, G1, G2)
@@ -124,21 +136,28 @@ class HG1G2:
         # mag_err[mag_err == 0] = np.nanmean(mag_err)
         # weights = weights_from_phase(phase)  # used for weighting
 
-        # And fit
-        result = model.fit(
-            pc.mag,
-            params,
-            phase=pc.phase,
-            method="least_squares",
-            fit_kws={
-                "loss": "soft_l1",
-            },
-            # weights=weights,
-        )
+        for band in set(pc.band):
+            band_suffix = f"_{band}" if pc.N_band > 1 else ""
 
-        for param in self.PARAMS:
-            setattr(self, param, result.params[param].value)
-            setattr(self, f"{param}_err", result.params[param].stderr)
+            # And fit
+            result = model.fit(
+                pc.mag[pc.band == band],
+                params,
+                phase=pc.phase[pc.band == band],
+                method="least_squares",
+                fit_kws={
+                    "loss": "soft_l1",
+                },
+                # weights=weights,
+            )
+
+            for param in self.PARAMS:
+                setattr(self, "".join([param, band_suffix]), result.params[param].value)
+                setattr(
+                    self,
+                    "".join([f"{param}_err", band_suffix]),
+                    result.params[param].stderr,
+                )
 
         pc.fitted_models.add("HG1G2")
 
