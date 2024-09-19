@@ -47,12 +47,12 @@ Fit your favourite model(s) to the observations.
    pc.plot()
 
 
-.. image:: gfx/massalia_hg_hg1g2_shg1g2.png
+.. image:: gfx/massalia_all_models.png
  :align: center
  :class: only-light
  :width: 1000
 
-.. image:: gfx/massalia_hg_hg1g2_shg1g2_dark.png
+.. image:: gfx/massalia_all_models_dark.png
  :align: center
  :class: only-dark
  :width: 1000

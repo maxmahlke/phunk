@@ -4,7 +4,6 @@ import lmfit
 import numpy as np
 from sbpy import photometry as phot
 
-# MODELS = ["Linexp", "HG", "HG12", "HG12S", "HG1G2", "sHG1G2"]
 MODELS = ["LinExp", "HG", "HG12", "HG12S", "HG1G2", "sHG1G2"]
 
 

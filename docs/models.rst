@@ -59,6 +59,64 @@ From `Muinonen+ 2010 <https://ui.adsabs.harvard.edu/abs/2010Icar..209..542M>`_. 
  :class: only-dark
  :width: 1000
 
+HG12
+====
+
+From `Muinonen+ 2010 <https://ui.adsabs.harvard.edu/abs/2010Icar..209..542M>`_. ``phunk`` uses the model implementation from `sbpy <https://github.com/NASA-Planetary-Science/sbpy>`_.
+
+.. code-block:: python
+
+   import phunk
+
+   # Observations of (20) Massalia from Gehrels 1956
+   phase = [0.57, 1.09, 3.20, 10.99, 14.69, 20.42]
+   mag = [6.555, 6.646, 6.793, 7.130, 7.210, 7.414]
+
+   pc = phunk.PhaseCurve(phase=phase, mag=mag)
+   pc.fit(['HG'])
+
+   pc.plot()
+
+.. image:: gfx/massalia_hg.png
+ :align: center
+ :class: only-light
+ :width: 1000
+
+.. image:: gfx/massalia_hg_dark.png
+ :align: center
+ :class: only-dark
+ :width: 1000
+
+HG12S
+=====
+
+From `Penttilä+ 2016 <https://ui.adsabs.harvard.edu/abs/2016P%26SS..123..117P/abstract>`_.
+In the paper, it is called the `HG12*` model. ``phunk`` uses the model
+implementation from `sbpy <https://github.com/NASA-Planetary-Science/sbpy>`_.
+
+.. code-block:: python
+
+   import phunk
+
+   # Observations of (20) Massalia from Gehrels 1956
+   phase = [0.57, 1.09, 3.20, 10.99, 14.69, 20.42]
+   mag = [6.555, 6.646, 6.793, 7.130, 7.210, 7.414]
+
+   pc = phunk.PhaseCurve(phase=phase, mag=mag)
+   pc.fit(['HG12S'])
+
+   pc.plot()
+
+.. image:: gfx/massalia_hg12s.png
+ :align: center
+ :class: only-light
+ :width: 1000
+
+.. image:: gfx/massalia_hg12s_dark.png
+ :align: center
+ :class: only-dark
+ :width: 1000
+
 sHG1G2
 ======
 
@@ -93,15 +151,37 @@ the ephemerides for you from the IMCCE's `Miriade <https://ssp.imcce.fr/webservi
  :class: only-dark
  :width: 1000
 
-.. HG12
-.. Muinonen 2010
-..
-.. HG12*
-.. Penttilä 2016
-..
-..
-.. Different bands
-.. requires RA Dec
-..
-.. a+bexpc
-.. Kaasalainen 2002
+
+LinExp
+======
+
+Four-parameter linear-exponential model from `Kaasalainen+ 2001 <https://ui.adsabs.harvard.edu/abs/2001JQSRT..70..529K/abstract>`_.
+
+.. math::
+
+   f(\alpha) = a \exp(\frac{-\alpha}{d}) + k \alpha + b
+
+with ``a`` and ``d`` the height and width of the opposition effect, ``k`` the photometric slope, and ``b`` the background.
+
+.. code-block:: python
+
+   import phunk
+
+   # Observations of (20) Massalia from Gehrels 1956
+   phase = [0.57, 1.09, 3.20, 10.99, 14.69, 20.42]
+   mag = [6.555, 6.646, 6.793, 7.130, 7.210, 7.414]
+
+   pc = phunk.PhaseCurve(phase=phase, mag=mag, target=20)
+   pc.fit(['LinExp'])
+
+   pc.plot()
+
+.. image:: gfx/massalia_linexp.png
+ :align: center
+ :class: only-light
+ :width: 1000
+
+.. image:: gfx/massalia_linexp_dark.png
+ :align: center
+ :class: only-dark
+ :width: 1000
