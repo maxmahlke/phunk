@@ -78,6 +78,9 @@ class HG1G2:
         """H,G1,G2 phase curve model."""
         phase = np.radians(phase)
 
+        if band is None:
+            band = ""
+
         H = getattr(self, f"H{band}")
         G1 = getattr(self, f"G1{band}")
         G2 = getattr(self, f"G2{band}")
