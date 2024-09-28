@@ -10,7 +10,7 @@ MODELS = ["LinExp", "HG", "HG12", "HG12S", "HG1G2", "sHG1G2"]
 class HG:
     """HG model from Bowell+ 1989"""
 
-    def __init__(self, H=10, G=0.15):
+    def __init__(self, H=10, G=0.15, bands=None):
         self.NAME = "HG"
         self.PARAMS = ("H", "G")
 
@@ -19,14 +19,11 @@ class HG:
 
     def eval(self, phase, H=None, G=None):
         """Evaluate HG model for given phase and parameters."""
-        phase = np.radians(phase)
-
-        if H is None:
-            H = self.H
-        if G is None:
-            G = self.G
-
-        return phot.HG.evaluate(pha=phase, hh=H, gg=G)
+        return phot.HG.evaluate(
+            pha=np.radians(phase),
+            hh=H if H is not None else self.H,
+            gg=G if G is not None else self.G,
+        )
 
     def is_fittable(self, pc):
         """Check if phase curve can be fit with this model."""
@@ -82,70 +79,60 @@ class HG1G2:
             setattr(self, f"G1{band}", G1)
             setattr(self, f"G2{band}", G2)
 
-    def eval(self, phase, H=None, G1=None, G2=None, band=None):
+    def eval(self, phase, H=None, G1=None, G2=None, band=""):
         """H,G1,G2 phase curve model."""
-        phase = np.radians(phase)
-
-        if band is None:
-            band = ""
-
-        H = getattr(self, f"H{band}")
-        G1 = getattr(self, f"G1{band}")
-        G2 = getattr(self, f"G2{band}")
-
-        return phot.HG1G2.evaluate(phase, H, G1, G2)
+        return phot.HG1G2.evaluate(
+            phase,
+            H if H is not None else getattr(self, f"H{band}"),
+            G1 if G1 is not None else getattr(self, f"G1{band}"),
+            G2 if G2 is not None else getattr(self, f"G2{band}"),
+        )
 
     def is_fittable(self, pc):
         """Check if phase curve can be fit."""
         _has_phase_and_mag(pc, self.NAME)
         return True
 
-    def fit(self, pc):
+    def fit(self, pc, weights=None, constrain_g1g2=False):
         """Fit a phase curve using the H, G1, G2 model from Muinonen+ 2010.
 
         Parameters
         ----------
-        phase : list or np.ndarray
-            The phase angles of observation in degree.
-        mag : list or np.ndarray
-            The reduced magnitudes.
         """
 
         def eval_fit(phase, H, G1, G2):
-            """Evaluation function for fitting."""
+            """Evaluation function for fitting. Required for lmfit."""
             phase = np.radians(phase)
             return phot.HG1G2.evaluate(phase, H, G1, G2)
 
-        # The model function
         model = lmfit.Model(eval_fit)
 
-        # Ensure that errors are well behaved
-        # mag_err[mag_err == 0] = np.nanmean(mag_err)
-        # weights = weights_from_phase(phase)  # used for weighting
-
         for band in set(pc.band):
-            # The fit parameters
-            print(f"Fitting band {band}..")
             params = lmfit.Parameters()
             params.add(f"H", value=15, min=0, max=30)
             params.add(f"G1", value=0.15, min=0, max=1.0)
-            params.add(f"G2", value=0.15, min=0, max=1.0)
-            # Add delta to implement inequality constraint
-            # https://lmfit.github.io/lmfit-py/constraints.html#using-inequality-constraints
-            # params.add("delta", min=0, value=0.5, max=1, vary=True)
-            # params.add(f"G2{band}", expr="delta-G1", min=0.0, max=1)
 
-            # And fit
+            if constrain_g1g2:
+                # Add delta to implement inequality constraint
+                # https://lmfit.github.io/lmfit-py/constraints.html#using-inequality-constraints
+                params.add("delta", min=0, value=0.5, max=1, vary=True)
+                params.add(f"G2", expr="delta-G1", min=0.0, max=1)
+            else:
+                params.add(f"G2", value=0.15, min=0, max=1.0)
+
+            phase = pc.phase[pc.band == band]
+            mag = pc.mag[pc.band == band]
+
+            if weights is not None:
+                weights = weights[pc.band == band]
+
             result = model.fit(
-                pc.mag[pc.band == band],
+                mag,
                 params,
-                phase=pc.phase[pc.band == band],
-                band=band,
+                phase=phase,
+                weights=weights,
                 method="least_squares",
-                fit_kws={
-                    "loss": "soft_l1",
-                },
-                # weights=weights,
+                fit_kws={"loss": "soft_l1"},
             )
 
             for param in self.PARAMS:
@@ -160,7 +147,7 @@ class HG1G2:
 class HG12:
     """HG12 model from Muinonen+ 2010."""
 
-    def __init__(self, H=15.0, G12=0.15):
+    def __init__(self, H=15.0, G12=0.15, bands=None):
         self.NAME = "HG12"
         self.PARAMS = ("H", "G12")
 
@@ -223,7 +210,7 @@ class HG12:
 class HG12S:
     """HG12* model from Penttilä+ 2016."""
 
-    def __init__(self, H=15.0, G12S=0.15):
+    def __init__(self, H=15.0, G12S=0.15, bands=None):
         self.NAME = "HG12S"
         self.PARAMS = ("H", "G12S")
 
@@ -286,7 +273,7 @@ class HG12S:
 class LinExp:
     """Linear-Exponential Modeling from Muinonen+ 2002"""
 
-    def __init__(self, a=15.0, b=0.15, d=0.15, k=1):
+    def __init__(self, a=15.0, b=0.15, d=0.15, k=1, bands=None):
         self.NAME = "LinExp"
         self.PARAMS = ("a", "b", "d", "k")
 
@@ -356,7 +343,9 @@ class LinExp:
 class sHG1G2:
     """sHG1G2 phase curve model."""
 
-    def __init__(self, H=15.0, G1=0.15, G2=0.15, alpha=np.pi, delta=0, R=0.9):
+    def __init__(
+        self, H=15.0, G1=0.15, G2=0.15, alpha=np.pi, delta=0, R=0.9, bands=None
+    ):
         """
         Provide ra and dec in degrees
         """

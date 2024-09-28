@@ -122,3 +122,7 @@ argument to save the plot under the specified path.
 .. Note::
 
    You need to ``fit`` a model before you can ``plot`` it.
+
+Multi-band phase curves
+=======================
+pc.bands

@@ -1,6 +1,8 @@
-import phunk
 import numpy as np
 import rocks
+
+import phunk
+from phunk.logging import logger
 
 
 class PhaseCurve:
@@ -46,8 +48,8 @@ class PhaseCurve:
         self.band = np.array(band).astype(str) if band is not None else band
 
         if self.band is None:
-            print("No observation bands provided. Assuming they are all 'V' band.")
-            self.band = np.array(["V"] * len(self.phase))
+            logger.debug("No observation bands provided.")
+            self.band = np.array([""] * len(self.phase))
 
         if target is not None:
             self.target = rocks.Rock(target)
@@ -98,11 +100,9 @@ class PhaseCurve:
         self.dec = np.degrees(ephem["dec_j2000"])
 
     @property
-    def N_band(self):
+    def bands(self):
         """Compute number of unique observation bands."""
-        if self.band is None:
-            raise ValueError("No observation 'band's specified.")
-        return len(set(self.band))
+        return sorted(set(self.band))
 
     def plot(self, models=None, band=None, save=None):
         """Plot phase curve and model fits.

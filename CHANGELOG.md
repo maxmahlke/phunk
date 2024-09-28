@@ -1,3 +1,9 @@
+#
+- Weights
+- per band fitting
+- constraing g1 g2
+- logging module
+
 # 0.1.1 - 2024-09-19
 - Correct list of implemented models in phunk.models
 - Add HG12 model from Muinonen+ 2010
