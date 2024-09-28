@@ -90,6 +90,18 @@ If you don't provide any argument, ``phunk`` will fit all implemented models.
 ..
 ..    pc.fit("HG1G2", weights=[...])
 
+
+Multi-band phase curves
+-----------------------
+pc.bands
+
+constrain g1 g2
+
+WEightes
+
+COnstrained solutions
+---------------------
+
 Accessing results
 =================
 
@@ -122,7 +134,3 @@ argument to save the plot under the specified path.
 .. Note::
 
    You need to ``fit`` a model before you can ``plot`` it.
-
-Multi-band phase curves
-=======================
-pc.bands
