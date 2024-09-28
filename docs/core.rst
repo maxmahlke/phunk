@@ -1,33 +1,6 @@
 Basic Usage
 -----------
 
-.. dot graph
-..
-.. phase curve -> models -> a + b exp c
-.. phase curve -> models -> HG1G2
-.. phase curve -> models -> HG12
-.. phase curve -> models -> HG
-.. phase curve -> models -> HG12*
-.. phase curve -> models -> sHG1G2
-..
-.. phase curve -> phase
-.. phase curve -> mag
-.. phase curve -> band
-.. phase curve -> redmag
-.. phase curve -> epoch
-..
-.. phase curve -> target -> rocks.Rock
-.. phase curve -> target -> ephemerides
-.. phase curve -> target -> ephemerides -> phase
-.. phase curve -> target -> ephemerides -> ra
-.. phase curve -> target -> ephemerides -> dec
-..
-.. Specify epoch in MJD
-..
-.. pc = phunk.PhaseCurve(mag=..., target='Massalia', epoch=...)
-.. pc.fit(sHG1G2)
-.. pc.plot()
-
 Providing Observations
 ======================
 
@@ -50,9 +23,30 @@ and a list of ``mag`` to the ``PhaseCurve``.
 
 .. Note::
 
-   If applicable, ``phunk`` expects values to be in degrees rather than radians.
+   Where applicable, ``phunk`` expects values to be in degrees rather than radians.
 
 Providing ``phase`` and ``mag`` is enough to fit most :ref:`models <models>`.
+
+Multi-band Phase Curves
++++++++++++++++++++++++
+
+You can pass observations in different bands to the ``PhaseCurve`` class by making use of the ``band`` argument,
+which should be a list which defines the band for each observation.
+
+.. code-block:: python
+
+   phase = [0.57, 1.09, 3.20, 10.99, 14.69, 20.42]
+   mag = [6.555, 6.646, 6.793, 7.130, 7.210, 7.414]
+   band = ["V", "V", "G", "G", "R", "V"]
+
+   pc = PhaseCurve(phase=phase, mag=mag, band=band)
+
+At any point, you can check the bands of your observations using the ``bands`` attribute of the phase curve.
+
+.. code-block:: python
+
+   >>> pc.bands
+   ["G", "R", "V"]
 
 Computing Ephemerides
 +++++++++++++++++++++
@@ -84,23 +78,52 @@ and provide a list of models to fit.
 
 If you don't provide any argument, ``phunk`` will fit all implemented models.
 
-.. Datapoints can be weighted by providing the ``weights`` argument.
-..
-.. .. code-block:: python
-..
-..    pc.fit("HG1G2", weights=[...])
+Datapoints can be weighted by providing the ``weights`` argument.
+
+.. code-block:: python
+
+   pc.fit("HG1G2", weights=[...])
+
+Fitting multi-band Curves
++++++++++++++++++++++++++
+
+When fitting multi-band observations, ``phunk`` automatically separates the observations by band and fits the separate
+phase curves. The model parameters of the different fitted phase curves get the band name as suffix.
+
+.. code-block:: python
+
+   epoch = [35193, 35194, 35198, 35214, 35223, 35242]
+   mag = [6.555, 6.646, 6.793, 7.130, 7.210, 7.414]
+   band = ["o", "o", "o", "c", "c", "c"]
+
+   pc = PhaseCurve(mag=mag, epoch=epoch, band="o")
+   pc.fit(['HG1G2'])  # fits two phase curves, one in "c" and the other in "o"
+
+   pc.HG1G2.Hc  # absolute magnitude in "c"
+   pc.HG1G2.Ho  # absolute magnitude in "o"
+   pc.HG1G2.H   # undefined
+
+.. Note::
+
+   The asteroid-specific parameters ``alpha``, ``delta``, and ``R`` of the ``sHG1G2`` remain without band-specific suffix
+   as they are uniquely defined, independent of observation band.
+
+Constrained solutions
++++++++++++++++++++++
+
+The ``G1`` and ``G2`` parameters of the ``HG1G2`` and ``sHG1G2`` :ref:`models <models>` can be constrained to yield
+only physically-meaningful solutions (decreasing brightness with increasing phase angle). By default, they are limited
+to values between ``0`` and ``1``. If you set ``constrain_g1g2=True`` when fitting ``HG1G2`` and ``sHG1G2``, the ``1-G1-G2>=0``
+inequality constraint is further applied.
+
+.. code-block:: python
+
+   pc.fit("sHG1G2", constrain_g1g2=True)
+
+Note that this might not be advantageous
+for phase curve fits: The solution will still be bad, and if unconstrained, you can use ``G1`` and ``G2`` to quickly identify failed fits.
 
 
-Multi-band phase curves
------------------------
-pc.bands
-
-constrain g1 g2
-
-WEightes
-
-COnstrained solutions
----------------------
 
 Accessing results
 =================
