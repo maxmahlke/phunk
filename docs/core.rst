@@ -84,6 +84,18 @@ Datapoints can be weighted by providing the ``weights`` argument.
 
    pc.fit("HG1G2", weights=[...])
 
+Once the models have been fit, you can access the model parameters as attributes of
+the ``PhasCurve`` via the dot notation.
+
+.. code-block:: python
+
+   pc.HG.H
+   pc.HG1G2.G1
+   pc.HG1G2.G1_err
+   pc.sHG1G2.R
+
+All available model attributes are given in the model description.
+
 Fitting multi-band Curves
 +++++++++++++++++++++++++
 
