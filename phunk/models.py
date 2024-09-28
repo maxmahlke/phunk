@@ -10,19 +10,23 @@ MODELS = ["LinExp", "HG", "HG12", "HG12S", "HG1G2", "sHG1G2"]
 class HG:
     """HG model from Bowell+ 1989"""
 
-    def __init__(self, H=10, G=0.15, bands=None):
+    def __init__(self, H=np.nan, G=np.nan, bands=None):
         self.NAME = "HG"
         self.PARAMS = ("H", "G")
 
-        self.H = H
-        self.G = G
+        if bands is None:
+            bands = [""]
 
-    def eval(self, phase, H=None, G=None):
+        for band in bands:
+            setattr(self, f"H{band}", H)
+            setattr(self, f"G{band}", G)
+
+    def eval(self, phase, H=None, G=None, band=""):
         """Evaluate HG model for given phase and parameters."""
         return phot.HG.evaluate(
             pha=np.radians(phase),
-            hh=H if H is not None else self.H,
-            gg=G if G is not None else self.G,
+            hh=H if H is not None else getattr(self, f"H{band}"),
+            gg=G if G is not None else getattr(self, f"G{band}"),
         )
 
     def is_fittable(self, pc):
@@ -30,32 +34,39 @@ class HG:
         _has_phase_and_mag(pc, self.NAME)
         return True
 
-    def fit(self, pc):
+    def fit(self, pc, weights=None):
         """Fit a phase curve using the HG model."""
 
-        # The model function
         model = lmfit.Model(self.eval)
-
-        # The fit parameters
         params = lmfit.Parameters()
-        params.add("H", value=15, min=0, max=30)
-        params.add("G", value=0.15, min=0, max=1.0)
 
-        # And fit
-        result = model.fit(
-            pc.mag,
-            params,
-            phase=pc.phase,
-            method="least_squares",
-            fit_kws={
-                "loss": "soft_l1",
-            },
-            # weights=weights,
-        )
+        for band in pc.bands:
+            params.add("H", value=15, min=0, max=30)
+            params.add("G", value=0.15, min=0, max=1.0)
 
-        for param in self.PARAMS:
-            setattr(self, param, result.params[param].value)
-            setattr(self, f"{param}_err", result.params[param].stderr)
+            phase = pc.phase[pc.band == band]
+            mag = pc.mag[pc.band == band]
+
+            if weights is not None:
+                weights_band = weights[pc.band == band]
+            else:
+                weights_band = np.ones(phase.shape)
+
+            # And fit
+            result = model.fit(
+                mag,
+                params,
+                phase=phase,
+                weights=weights_band,
+                method="least_squares",
+                fit_kws={"loss": "soft_l1"},
+            )
+
+            for param in self.PARAMS:
+                setattr(self, "".join([param, band]), result.params[param].value)
+                setattr(
+                    self, f"{''.join([param, band])}_err", result.params[param].stderr
+                )
 
         pc.fitted_models.add("HG")
 
@@ -63,7 +74,7 @@ class HG:
 class HG1G2:
     """HG1G2 model from Muinonen+ 2010."""
 
-    def __init__(self, H=15.0, G1=0.15, G2=0.15, bands=None):
+    def __init__(self, H=np.nan, G1=np.nan, G2=np.nan, bands=None):
         self.NAME = "HG1G2"
         self.PARAMS = ("H", "G1", "G2")
 
@@ -102,7 +113,7 @@ class HG1G2:
 
         model = lmfit.Model(eval_fit)
 
-        for band in set(pc.band):
+        for band in pc.bands:
             params = lmfit.Parameters()
             params.add(f"H", value=15, min=0, max=30)
             params.add(f"G1", value=0.15, min=0, max=1.0)
@@ -119,13 +130,15 @@ class HG1G2:
             mag = pc.mag[pc.band == band]
 
             if weights is not None:
-                weights = weights[pc.band == band]
+                weights_band = weights[pc.band == band]
+            else:
+                weights_band = np.ones(phase.shape)
 
             result = model.fit(
                 mag,
                 params,
                 phase=phase,
-                weights=weights,
+                weights=weights_band,
                 method="least_squares",
                 fit_kws={"loss": "soft_l1"},
             )
@@ -142,30 +155,31 @@ class HG1G2:
 class HG12:
     """HG12 model from Muinonen+ 2010."""
 
-    def __init__(self, H=15.0, G12=0.15, bands=None):
+    def __init__(self, H=np.nan, G12=np.nan, bands=None):
         self.NAME = "HG12"
         self.PARAMS = ("H", "G12")
 
-        self.H = H
-        self.G1 = G12
+        if bands is None:
+            bands = [""]
 
-    def eval(self, phase, H=None, G12=None):
+        for band in bands:
+            setattr(self, f"H{band}", H)
+            setattr(self, f"G12{band}", G12)
+
+    def eval(self, phase, H=None, G12=None, band=""):
         """H,G1,G2 phase curve model."""
-        phase = np.radians(phase)
-
-        if H is None:
-            H = self.H
-        if G12 is None:
-            G12 = self.G12
-
-        return phot.HG12.evaluate(phase, H, G12)
+        return phot.HG12.evaluate(
+            np.radians(phase),
+            H if H is not None else getattr(self, f"H{band}"),
+            G12 if G12 is not None else getattr(self, f"G12{band}"),
+        )
 
     def is_fittable(self, pc):
         """Check if phase curve can be fit."""
         _has_phase_and_mag(pc, self.NAME)
         return True
 
-    def fit(self, pc):
+    def fit(self, pc, weights=None):
         """Fit a phase curve using the H, G1, G2 model from Muinonen+ 2010.
 
         Parameters
@@ -176,28 +190,36 @@ class HG12:
             The reduced magnitudes.
         """
 
-        # The model function
         model = lmfit.Model(self.eval)
 
-        # The fit parameters
-        params = lmfit.Parameters()
-        params.add("H", value=15, min=0, max=30)
-        params.add("G12", value=0.3, min=0, max=1.0)
+        for band in pc.bands:
+            params = lmfit.Parameters()
+            params.add("H", value=15, min=0, max=30)
+            params.add("G12", value=0.3, min=0, max=1.0)
 
-        # And fit
-        result = model.fit(
-            pc.mag,
-            params,
-            phase=pc.phase,
-            method="least_squares",
-            fit_kws={
-                "loss": "soft_l1",
-            },
-        )
+            phase = pc.phase[pc.band == band]
+            mag = pc.mag[pc.band == band]
 
-        for param in self.PARAMS:
-            setattr(self, param, result.params[param].value)
-            setattr(self, f"{param}_err", result.params[param].stderr)
+            if weights is not None:
+                weights_band = weights[pc.band == band]
+            else:
+                weights_band = np.ones(phase.shape)
+
+            # And fit
+            result = model.fit(
+                mag,
+                params,
+                phase=phase,
+                weights=weights_band,
+                method="least_squares",
+                fit_kws={"loss": "soft_l1"},
+            )
+
+            for param in self.PARAMS:
+                setattr(self, "".join([param, band]), result.params[param].value)
+                setattr(
+                    self, f"{''.join([param, band])}_err", result.params[param].stderr
+                )
 
         pc.fitted_models.add("HG12")
 
@@ -205,30 +227,31 @@ class HG12:
 class HG12S:
     """HG12* model from Penttilä+ 2016."""
 
-    def __init__(self, H=15.0, G12S=0.15, bands=None):
+    def __init__(self, H=np.nan, G12S=np.nan, bands=None):
         self.NAME = "HG12S"
         self.PARAMS = ("H", "G12S")
 
-        self.H = H
-        self.G12S = G12S
+        if bands is None:
+            bands = [""]
 
-    def eval(self, phase, H=None, G12S=None):
+        for band in bands:
+            setattr(self, f"H{band}", H)
+            setattr(self, f"G12S{band}", G12S)
+
+    def eval(self, phase, H=None, G12S=None, band=""):
         """H,G1,G2 phase curve model."""
-        phase = np.radians(phase)
-
-        if H is None:
-            H = self.H
-        if G12S is None:
-            G12S = self.G12S
-
-        return phot.HG12_Pen16.evaluate(phase, H, G12S)
+        return phot.HG12_Pen16.evaluate(
+            np.radians(phase),
+            H if H is not None else getattr(self, f"H{band}"),
+            G12S if G12S is not None else getattr(self, f"G12S{band}"),
+        )
 
     def is_fittable(self, pc):
         """Check if phase curve can be fit."""
         _has_phase_and_mag(pc, self.NAME)
         return True
 
-    def fit(self, pc):
+    def fit(self, pc, weights=None):
         """Fit a phase curve using the H, G1, G2 model from Muinonen+ 2010.
 
         Parameters
@@ -239,28 +262,35 @@ class HG12S:
             The reduced magnitudes.
         """
 
-        # The model function
         model = lmfit.Model(self.eval)
 
-        # The fit parameters
-        params = lmfit.Parameters()
-        params.add("H", value=15, min=0, max=30)
-        params.add("G12S", value=0.3, min=0, max=1.0)
+        for band in pc.bands:
+            params = lmfit.Parameters()
+            params.add("H", value=15, min=0, max=30)
+            params.add("G12S", value=0.3, min=0, max=1.0)
 
-        # And fit
-        result = model.fit(
-            pc.mag,
-            params,
-            phase=pc.phase,
-            method="least_squares",
-            fit_kws={
-                "loss": "soft_l1",
-            },
-        )
+            phase = pc.phase[pc.band == band]
+            mag = pc.mag[pc.band == band]
 
-        for param in self.PARAMS:
-            setattr(self, param, result.params[param].value)
-            setattr(self, f"{param}_err", result.params[param].stderr)
+            if weights is not None:
+                weights_band = weights[pc.band == band]
+            else:
+                weights_band = np.ones(phase.shape)
+
+            result = model.fit(
+                mag,
+                params,
+                phase=phase,
+                weights=weights_band,
+                method="least_squares",
+                fit_kws={"loss": "soft_l1"},
+            )
+
+            for param in self.PARAMS:
+                setattr(self, "".join([param, band]), result.params[param].value)
+                setattr(
+                    self, f"{''.join([param, band])}_err", result.params[param].stderr
+                )
 
         pc.fitted_models.add("HG12S")
 
@@ -268,27 +298,25 @@ class HG12S:
 class LinExp:
     """Linear-Exponential Modeling from Muinonen+ 2002"""
 
-    def __init__(self, a=15.0, b=0.15, d=0.15, k=1, bands=None):
+    def __init__(self, a=np.nan, b=np.nan, d=np.nan, k=np.nan, bands=None):
         self.NAME = "LinExp"
         self.PARAMS = ("a", "b", "d", "k")
 
-        self.a = a
-        self.b = b
-        self.d = d
-        self.k = k
+        if bands is None:
+            bands = [""]
 
-    def eval(self, phase, a=None, b=None, d=None, k=None):
+        for band in bands:
+            setattr(self, f"a{band}", a)
+            setattr(self, f"b{band}", b)
+            setattr(self, f"d{band}", d)
+            setattr(self, f"k{band}", k)
+
+    def eval(self, phase, a=None, b=None, d=None, k=None, band=""):
         """Evaluate photometric phase curve model."""
-
-        if a is None:
-            a = self.a
-        if b is None:
-            b = self.b
-        if d is None:
-            d = self.d
-        if k is None:
-            k = self.k
-
+        a = (a if a is not None else getattr(self, f"a{band}"),)
+        b = (b if b is not None else getattr(self, f"b{band}"),)
+        d = (d if d is not None else getattr(self, f"d{band}"),)
+        k = (k if k is not None else getattr(self, f"k{band}"),)
         return a * np.exp(-phase / d) + b + k * phase
 
     def is_fittable(self, pc):
@@ -296,7 +324,7 @@ class LinExp:
         _has_phase_and_mag(pc, self.NAME)
         return True
 
-    def fit(self, pc):
+    def fit(self, pc, weights=None):
         """Fit a phase curve using the H, G1, G2 model from Muinonen+ 2010.
 
         Parameters
@@ -307,30 +335,37 @@ class LinExp:
             The reduced magnitudes.
         """
 
-        # The model function
         model = lmfit.Model(self.eval)
 
-        # The fit parameters
-        params = lmfit.Parameters()
-        params.add("a", value=-15, max=30)
-        params.add("b", value=-10)
-        params.add("k", value=0.3)
-        params.add("d", value=-3)
+        for band in pc.bands:
+            params = lmfit.Parameters()
+            params.add("a", value=-15, max=30)
+            params.add("b", value=-10)
+            params.add("k", value=0.3)
+            params.add("d", value=-3)
 
-        # And fit
-        result = model.fit(
-            pc.mag,
-            params,
-            phase=pc.phase,
-            method="least_squares",
-            fit_kws={
-                "loss": "soft_l1",
-            },
-        )
+            phase = pc.phase[pc.band == band]
+            mag = pc.mag[pc.band == band]
 
-        for param in self.PARAMS:
-            setattr(self, param, result.params[param].value)
-            setattr(self, f"{param}_err", result.params[param].stderr)
+            if weights is not None:
+                weights_band = weights[pc.band == band]
+            else:
+                weights_band = np.ones(phase.shape)
+
+            result = model.fit(
+                mag,
+                params,
+                phase=phase,
+                weights=weights_band,
+                method="least_squares",
+                fit_kws={"loss": "soft_l1"},
+            )
+
+            for param in self.PARAMS:
+                setattr(self, "".join([param, band]), result.params[param].value)
+                setattr(
+                    self, f"{''.join([param, band])}_err", result.params[param].stderr
+                )
 
         pc.fitted_models.add("LinExp")
 
@@ -338,23 +373,54 @@ class LinExp:
 class sHG1G2:
     """sHG1G2 phase curve model."""
 
-    def __init__(self, bands=None):
-        """
-        Provide ra and dec in degrees
+    def __init__(
+        self,
+        H=np.nan,
+        G1=np.nan,
+        G2=np.nan,
+        alpha=np.nan,
+        delta=np.nan,
+        R=np.nan,
+        bands=None,
+    ):
+        """sHG1G2 phase curve model.
+
+        Parameters
+        ----------
+        H: float
+            Absolute magnitude in mag
+        G1: float
+            G1 parameter (no unit)
+        G2: float
+            G2 parameter (no unit)
+        alpha: float
+            RA of the spin (radian)
+        delta: float
+            Dec of the spin (radian)
+        R: float
+            Oblateness (no units)
         """
         self.NAME = "sHG1G2"
         self.PARAMS = ("H", "G1", "G2", "alpha", "delta", "R")
 
-        # self.alpha = alpha
-        # self.delta = delta
-        # self.R = R
+        if bands is None:
+            bands = [""]
+
+        for band in bands:
+            setattr(self, f"H{band}", H)
+            setattr(self, f"G1{band}", G1)
+            setattr(self, f"G2{band}", G2)
+
+        self.alpha = alpha
+        self.delta = delta
+        self.R = R
 
     def eval(
         self,
         phase,
         ra,
         dec,
-        band,
+        band="",
         H=None,
         G1=None,
         G2=None,
@@ -392,26 +458,16 @@ class sHG1G2:
         ra = np.radians(ra)
         dec = np.radians(dec)
 
-        if H is None:
-            H = self.H
-        if G1 is None:
-            G1 = self.G1
-        if G2 is None:
-            G2 = self.G2
-        if alpha is None:
-            alpha = self.alpha
-        if delta is None:
-            delta = self.delta
-        if R is None:
-            R = self.R
+        H = self.H if not band else getattr(self, f"H{band}")
+        G1 = self.G1 if not band else getattr(self, f"G1{band}")
+        G2 = self.G2 if not band else getattr(self, f"G2{band}")
+
+        alpha = self.alpha if alpha is None else alpha
+        delta = self.delta if delta is None else delta
+        R = self.R if R is None else R
 
         # Standard HG1G2 part: h + f(alpha, G1, G2)
-        func1 = phot.HG1G2().evaluate(
-            phase,
-            getattr(self, f"H{band}"),
-            getattr(self, f"G1{band}"),
-            getattr(self, f"G2{band}"),
-        )
+        func1 = phot.HG1G2().evaluate(phase, H, G1, G2)
 
         # Spin part
         geo = spin_angle(ra, dec, alpha, delta)
@@ -452,6 +508,7 @@ class sHG1G2:
             else:
                 params.add(f"G2{band}", value=0.15, min=0.0, max=1)
 
+        # Fitting all bands at once with sHG1G2
         params.add(f"R", value=0.8, min=0.1, max=1)
         params.add(f"alpha", value=np.pi, min=0.0, max=2 * np.pi)
         params.add(f"delta", value=0, min=-np.pi / 2, max=np.pi / 2)
@@ -472,9 +529,7 @@ class sHG1G2:
             ),
             method="least_squares",
             jac="2-point",
-            # fit_kws={
             loss="soft_l1",
-            # },
         )
 
         for name, param in out.params.items():

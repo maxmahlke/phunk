@@ -1,8 +1,8 @@
-#
-- Weights
-- per band fitting
-- constraing g1 g2
-- logging module
+# 0.1.2 - 2024-09-28
+- When providing observations in multiple bands, these observations are fit separately
+- PhaseCurve fit method now accepts weights
+- HG1G2 and sHG1G2 now accept the `constrain_g1g2` argument
+- Added logging module
 
 # 0.1.1 - 2024-09-19
 - Correct list of implemented models in phunk.models

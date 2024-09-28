@@ -73,4 +73,4 @@ Fit your favourite model(s) to the observations.
    :caption:
 
 
-.. [#f1] Latest version: 0.1.1  - `What's new? <https://github.com/maxmahlke/phunk/blob/master/CHANGELOG.md>`_  | Comment, bug or feature request? `Email me <https://www.ias.universite-paris-saclay.fr/annuaire?nom=mahlke>`_ or open an issue on `GitHub <https://github.com/maxmahlke/phunk/issues>`_.
+.. [#f1] Latest version: 0.1.2  - `What's new? <https://github.com/maxmahlke/phunk/blob/master/CHANGELOG.md>`_  | Comment, bug or feature request? `Email me <https://www.ias.universite-paris-saclay.fr/annuaire?nom=mahlke>`_ or open an issue on `GitHub <https://github.com/maxmahlke/phunk/issues>`_.
