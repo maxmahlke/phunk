@@ -41,10 +41,6 @@ class HG:
         params.add("H", value=15, min=0, max=30)
         params.add("G", value=0.15, min=0, max=1.0)
 
-        # Ensure that errors are well behaved
-        # mag_err[mag_err == 0] = np.nanmean(mag_err)
-        # weights = weights_from_phase(phase)  # used for weighting
-
         # And fit
         result = model.fit(
             pc.mag,
@@ -82,7 +78,7 @@ class HG1G2:
     def eval(self, phase, H=None, G1=None, G2=None, band=""):
         """H,G1,G2 phase curve model."""
         return phot.HG1G2.evaluate(
-            phase,
+            np.radians(phase),
             H if H is not None else getattr(self, f"H{band}"),
             G1 if G1 is not None else getattr(self, f"G1{band}"),
             G2 if G2 is not None else getattr(self, f"G2{band}"),
@@ -102,8 +98,7 @@ class HG1G2:
 
         def eval_fit(phase, H, G1, G2):
             """Evaluation function for fitting. Required for lmfit."""
-            phase = np.radians(phase)
-            return phot.HG1G2.evaluate(phase, H, G1, G2)
+            return phot.HG1G2.evaluate(np.radians(phase), H, G1, G2)
 
         model = lmfit.Model(eval_fit)
 
@@ -343,21 +338,16 @@ class LinExp:
 class sHG1G2:
     """sHG1G2 phase curve model."""
 
-    def __init__(
-        self, H=15.0, G1=0.15, G2=0.15, alpha=np.pi, delta=0, R=0.9, bands=None
-    ):
+    def __init__(self, bands=None):
         """
         Provide ra and dec in degrees
         """
         self.NAME = "sHG1G2"
-        self.PARAMS = ("alpha", "delta", "R")
+        self.PARAMS = ("H", "G1", "G2", "alpha", "delta", "R")
 
-        # self.H = H
-        # self.G1 = G1
-        # self.G2 = G2
-        self.alpha = alpha
-        self.delta = delta
-        self.R = R
+        # self.alpha = alpha
+        # self.delta = delta
+        # self.R = R
 
     def eval(
         self,
@@ -418,9 +408,9 @@ class sHG1G2:
         # Standard HG1G2 part: h + f(alpha, G1, G2)
         func1 = phot.HG1G2().evaluate(
             phase,
-            getattr(self, f"H_{band}"),
-            getattr(self, f"G1_{band}"),
-            getattr(self, f"G2_{band}"),
+            getattr(self, f"H{band}"),
+            getattr(self, f"G1{band}"),
+            getattr(self, f"G2{band}"),
         )
 
         # Spin part
@@ -444,38 +434,30 @@ class sHG1G2:
 
         return True
 
-    def fit(self, pc):
+    def fit(self, pc, weights=None, constrain_g1g2=False):
         """Fit a phase curve using the sHG1G2 model."""
 
         params = lmfit.Parameters()
 
         for band in set(pc.band):
-            params.add(f"H_{band}", value=15, min=0, max=30)
-            params.add(f"G1_{band}", value=0.15, min=0, max=1.0)
-            # constrain_g1g2 = False
-            # params.add(f"G1_{band}", value=0.15)
+            params.add(f"H{band}", value=15, min=0, max=30)
+            params.add(f"G1{band}", value=0.15, min=0, max=1.0)
 
             # Add delta to implement inequality constraint
             # https://lmfit.github.io/lmfit-py/constraints.html#using-inequality-constraints
-            # if constrain_g1g2:
-            if False:
-                params.add(f"delta_{band}", min=0, value=0.5, max=1, vary=True)
-                params.add(f"G2_{band}", expr=f"delta_{band}-G1_{band}", min=0.0, max=1)
+            if constrain_g1g2:
+                params.add(f"delta{band}", min=0, value=0.5, max=1, vary=True)
+                params.add(f"G2{band}", expr=f"delta{band}-G1{band}", min=0.0, max=1)
 
             else:
-                params.add(f"G2_{band}", value=0.15, min=0.0, max=1)
-                # params.add(f"G2_{band}", value=0.15)
+                params.add(f"G2{band}", value=0.15, min=0.0, max=1)
 
         params.add(f"R", value=0.8, min=0.1, max=1)
         params.add(f"alpha", value=np.pi, min=0.0, max=2 * np.pi)
         params.add(f"delta", value=0, min=-np.pi / 2, max=np.pi / 2)
 
-        # Ensure that errors are well behaved
-        # mag_err[mag_err == 0] = np.nanmean(mag_err)
-        # mag_err = np.ones(mag.shape)
-        weights = np.ones(pc.mag.shape)
-
-        # weights = weights_from_phase(phase)  # used for weighting
+        if weights is None:
+            weights = np.ones(pc.mag.shape)
 
         out = lmfit.minimize(
             residual,
@@ -498,7 +480,6 @@ class sHG1G2:
         for name, param in out.params.items():
             if name in ["alpha", "delta"]:
                 setattr(self, name, np.degrees(param.value))
-                # setattr(self, f"{name}_err", np.degrees(param.stderr))
                 continue
             setattr(self, name, param.value)
             setattr(self, f"{name}_err", param.stderr)
@@ -592,11 +573,11 @@ def func_hg1g2(ph, h, g1, g2):
     out: array of floats
         H - 2.5 log(f(G1G2))
     """
-    from sbpy.photometry import HG1G2
-
     # Standard G1G2 part
     func1 = (
-        g1 * HG1G2._phi1(ph) + g2 * HG1G2._phi2(ph) + (1 - g1 - g2) * HG1G2._phi3(ph)
+        g1 * phot.HG1G2._phi1(ph)
+        + g2 * phot.HG1G2._phi2(ph)
+        + (1 - g1 - g2) * phot.HG1G2._phi3(ph)
     )
     func1 = -2.5 * np.log10(func1)
 
@@ -669,9 +650,7 @@ def residual(pars, phase, mag, weights, bands, ra, dec):
     params += [delta]
     params = params[:-3]
     filternames = [
-        param.name.split("_")[1]
-        for param in pars.values()
-        if param.name.startswith("H")
+        param.name[1:] for param in pars.values() if param.name.startswith("H")
     ]
     # params = list(pars.values())[:-3]
     nparams = len(params) / len(filternames)
@@ -700,23 +679,6 @@ def residual(pars, phase, mag, weights, bands, ra, dec):
         eqs = np.concatenate((eqs, myfunc))
 
     return np.ravel(eqs)
-
-
-def weights_from_phase(phase):
-    """Compute weights based on phase angle in degree"""
-
-    # 0-2 - weight 5
-    # 2-5 - weight 4
-    # 5-10 - weight 3
-    # 10-20 - weight 2
-    # 20- weight 1
-    weights = np.ones_like(phase)
-    weights[phase < 2] = 5
-    weights[(phase >= 2) & (phase < 5)] = 4
-    weights[(phase >= 5) & (phase < 10)] = 3
-    weights[(phase >= 10) & (phase < 20)] = 2
-    weights[phase >= 20] = 1
-    return weights
 
 
 def _has_phase_and_mag(pc, model):

@@ -65,11 +65,11 @@ def plot_pc(pc, models, band=None, save=None):
         if model.NAME == "sHG1G2":
             mag_eval = phunk.models.HG1G2().eval(
                 phase_eval,
-                H=getattr(model, f"H_{band}"),
-                G1=getattr(model, f"G1_{band}"),
-                G2=getattr(model, f"G2_{band}"),
+                H=getattr(model, f"H{band}"),
+                G1=getattr(model, f"G1{band}"),
+                G2=getattr(model, f"G2{band}"),
             )
-            params = [f"H_{band}", f"G1_{band}", f"G2_{band}"]  # + params
+            params = [f"H{band}", f"G1{band}", f"G2{band}"]  # + params
 
         else:
             mag_eval = model.eval(phase_eval)
