@@ -137,23 +137,9 @@ for phase curve fits: The solution will still be bad, and if unconstrained, you 
 
 
 
-Accessing results
-=================
 
-Once the models have been fit, you can access the model parameters as attributes of
-the ``PhasCurve`` via the dot notation.
-
-.. code-block:: python
-
-   pc.HG.H
-   pc.HG1G2.G1
-   pc.HG1G2.G1_err
-   pc.sHG1G2.R
-
-All available model attributes are given in the model description.
-
-Plotting results
-================
+Plotting Curves
+===============
 
 Use the ``.plot`` method of the ``PhaseCurve`` class to plot phase curves.
 You can select which models to add to the plot using the ``models`` argument.
