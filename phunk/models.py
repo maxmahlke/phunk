@@ -37,7 +37,11 @@ class HG:
     def fit(self, pc, weights=None):
         """Fit a phase curve using the HG model."""
 
-        model = lmfit.Model(self.eval)
+        def eval_fit(phase, H, G):
+            """Evaluation function for fitting. Required for lmfit."""
+            return phot.HG.evaluate(np.radians(phase), H, G)
+
+        model = lmfit.Model(eval_fit)
         params = lmfit.Parameters()
 
         for band in pc.bands:
@@ -190,7 +194,11 @@ class HG12:
             The reduced magnitudes.
         """
 
-        model = lmfit.Model(self.eval)
+        def eval_fit(phase, H, G12):
+            """Evaluation function for fitting. Required for lmfit."""
+            return phot.HG12.evaluate(np.radians(phase), H, G12)
+
+        model = lmfit.Model(eval_fit)
 
         for band in pc.bands:
             params = lmfit.Parameters()
@@ -262,7 +270,11 @@ class HG12S:
             The reduced magnitudes.
         """
 
-        model = lmfit.Model(self.eval)
+        def eval_fit(phase, H, G12S):
+            """Evaluation function for fitting. Required for lmfit."""
+            return phot.HG12_Pen16.evaluate(np.radians(phase), H, G12S)
+
+        model = lmfit.Model(eval_fit)
 
         for band in pc.bands:
             params = lmfit.Parameters()
@@ -335,7 +347,11 @@ class LinExp:
             The reduced magnitudes.
         """
 
-        model = lmfit.Model(self.eval)
+        def eval_fit(phase, a, b, d, k):
+            """Evaluation function for fitting. Required for lmfit."""
+            return a * np.exp(-phase / d) + b + k * phase
+
+        model = lmfit.Model(eval_fit)
 
         for band in pc.bands:
             params = lmfit.Parameters()
