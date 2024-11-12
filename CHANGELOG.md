@@ -1,3 +1,6 @@
+# 0.1.3 - 2024-11-12
+- Fix bug in model per-band fitting routines
+
 # 0.1.2 - 2024-09-28
 - When providing observations in multiple bands, these observations are fit separately
 - PhaseCurve fit method now accepts weights
