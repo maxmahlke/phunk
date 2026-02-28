@@ -4,7 +4,7 @@ import requests
 
 
 def query(name, epochs):
-    """Gets asteroid ephemerides from IMCCE Miriade.
+    """Gets asteoid ephemerides from VOSSP Miriade.
 
     Parameters
     ----------
@@ -26,13 +26,12 @@ def query(name, epochs):
 
     # ------
     # Query Miriade for phase angles
-    url = "http://vo.imcce.fr/webservices/miriade/ephemcc_query.php"
+    url = "https://ssp.imcce.fr/webservices/miriade/api/ephemcc.php?"
 
     params = {
         "-name": f"a:{name}",
         "-mime": "json",
-        "-tcoor": "5",
-        "-output": "--jul",
+        "-output": "--jul,--iofile(ephemcc-photom.xml)",
         "-tscale": "UTC",
     }
 
