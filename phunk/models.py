@@ -4,7 +4,9 @@ import lmfit
 import numpy as np
 from sbpy import photometry as phot
 
-MODELS = ["LinExp", "HG", "HG12", "HG12S", "HG1G2", "sHG1G2"]
+from phunk.geometry import cos_aspect_angle, rotation_phase, subobserver_longitude
+
+MODELS = ["LinExp", "HG", "HG12", "HG12S", "HG1G2", "sHG1G2", "SOCCA"]
 
 
 class HG:
@@ -486,7 +488,7 @@ class sHG1G2:
         func1 = phot.HG1G2().evaluate(phase, H, G1, G2)
 
         # Spin part
-        geo = spin_angle(ra, dec, alpha, delta)
+        geo = cos_aspect_angle(ra, dec, alpha, delta)
         func2 = 1 - (1 - self.R) * np.abs(geo)
         func2 = 2.5 * np.log10(func2)
         return func1 + func2
@@ -497,9 +499,9 @@ class sHG1G2:
 
         # Do we have RA and Dec?
         if pc.ra is None or pc.dec is None:
-            assert (
-                pc.epoch is not None and pc.target is not None
-            ), f"Neither RA/Dec nor target nor observation epoch provided. Cannot fit {self.NAME} model."
+            assert pc.epoch is not None and pc.target is not None, (
+                f"Neither RA/Dec nor target nor observation epoch provided. Cannot fit {self.NAME} model."
+            )
 
             print("No RA or Dec provided but epoch and target found.")
             pc.get_ephems()
@@ -555,6 +557,225 @@ class sHG1G2:
             setattr(self, name, param.value)
             setattr(self, f"{name}_err", param.stderr)
         pc.fitted_models.add("sHG1G2")
+
+
+class SOCCA:
+    """SOCCA phase curve model."""
+
+    def __init__(
+        self,
+        H=np.nan,
+        G1=np.nan,
+        G2=np.nan,
+        period=np.nan,
+        alpha=np.nan,
+        delta=np.nan,
+        a_b=np.nan,
+        a_c=np.nan,
+        W0=np.nan,
+        t0=np.nan,
+        bands=None,
+    ):
+        """SOCCA phase curve model.
+
+        Parameters
+        ----------
+        H: float
+            Absolute magnitude in mag
+        G1: float
+            G1 parameter (no unit)
+        G2: float
+            G2 parameter (no unit)
+        period: float
+            Sidereal rotation period (days)
+        alpha: float
+            RA of the spin (degree)
+        delta: float
+            Dec of the spin (degree)
+        a_b: float
+            Triaxial axes a/b ratio (no units)
+        a_c: float
+            Triaxial axes a/c ratio (no units)
+        W0: float
+            Initial rotation angle (degree)
+        t0: float
+            Reference epoch for rotation (JD)
+        """
+        self.NAME = "SOCCA"
+        self.PARAMS = ("H", "G1", "G2", "period", "alpha", "delta", "a_b", "a_c", "W0")
+
+        if bands is None:
+            bands = [""]
+
+        for band in bands:
+            setattr(self, f"H{band}", H)
+            setattr(self, f"G1{band}", G1)
+            setattr(self, f"G2{band}", G2)
+
+        self.period = period
+        self.alpha = alpha
+        self.delta = delta
+        self.a_b = a_b
+        self.a_c = a_c
+        self.W0 = W0
+        self.t0 = t0
+
+    def eval(
+        self,
+        phase,
+        ra,
+        dec,
+        band="",
+        H=None,
+        G1=None,
+        G2=None,
+        period=None,
+        alpha=None,
+        delta=None,
+        a_b=None,
+        a_c=None,
+        W0=None,
+        t0=None,
+    ):
+        """SOCCA phase curve model.
+
+        Return f(H, G1, G2, period, alpha, delta, a_b, a_c, W0) part of the lightcurve in mag space
+
+        Parameters
+        ----------
+        pha: array-like [3, N]
+            List containing [phase angle in degrees, RA in radians, Dec in radians]
+        H: float
+            Absolute magnitude in mag
+        G1: float
+            G1 parameter (no unit)
+        G2: float
+            G2 parameter (no unit)
+        period: float
+            Sidereal rotation period (days)
+        alpha: float
+            Right ascension of the spin axis (degree)
+        delta: float
+            Declination of the spin axis (degree)
+        a_b: float
+            Triaxial axes a/b ratio (no units)
+        a_c: float
+            Triaxial axes a/c ratio (no units)
+        W0: float
+            Initial rotation angle (degree)
+        t0: float
+            Reference epoch for rotation (JD)
+
+        Returns
+        ----------
+        out: array of floats
+            H - 2.5 log(f(G1G2)) - 2.5 log(f(R, spin))
+        """
+        phase = np.radians(phase)
+        ra = np.radians(ra)
+        dec = np.radians(dec)
+
+        H = self.H if not band else getattr(self, f"H{band}")
+        G1 = self.G1 if not band else getattr(self, f"G1{band}")
+        G2 = self.G2 if not band else getattr(self, f"G2{band}")
+
+        period = self.period if period is None else period
+        alpha = np.radians(self.alpha) if alpha is None else np.radians(alpha)
+        delta = np.radians(self.delta) if delta is None else np.radians(delta)
+        a_b = self.a_b if a_b is None else a_b
+        a_c = self.a_c if a_c is None else a_c
+        W0 = np.radians(self.W0) if W0 is None else np.radians(W0)
+        t0 = self.t0 if t0 is None else t0
+
+        # Standard HG1G2 part: h + f(alpha, G1, G2)
+        func1 = phot.HG1G2().evaluate(phase, H, G1, G2)
+
+        # Spin part
+        cos_aspect = cos_aspect_angle(ra, dec, alpha, delta)
+        cos_aspect_2 = cos_aspect**2
+        sin_aspect_2 = 1 - cos_aspect_2
+
+        # Sidereal
+        W = rotation_phase(ep, phi0, 2 * np.pi / period, t0)
+        rot_phase = subobserver_longitude(ra, dec, alpha, delta, W)
+
+        # https://ui.adsabs.harvard.edu/abs/1985A%26A...149..186P/abstract
+        func2 = np.sqrt(
+            sin_aspect_2 * (np.cos(rot_phase) ** 2 + (a_b**2) * np.sin(rot_phase) ** 2)
+            + cos_aspect_2 * a_c**2
+        )
+        func2 = -2.5 * np.log10(func2)
+
+        return func1 + func2
+
+    def is_fittable(self, pc):
+        """Check whether phase curve can be fit with SOCCA model."""
+        _has_phase_and_mag(pc, self.NAME)
+
+        # Do we have RA and Dec?
+        if pc.ra is None or pc.dec is None:
+            assert pc.epoch is not None and pc.target is not None, (
+                f"Neither RA/Dec nor target nor observation epoch provided. Cannot fit {self.NAME} model."
+            )
+
+            print("No RA or Dec provided but epoch and target found.")
+            pc.get_ephems()
+
+        return True
+
+    def fit(self, pc, weights=None, constrain_g1g2=False):
+        """Fit a phase curve using the SOCCA model."""
+
+        params = lmfit.Parameters()
+
+        for band in set(pc.band):
+            params.add(f"H{band}", value=15, min=0, max=30)
+            params.add(f"G1{band}", value=0.15, min=0, max=1.0)
+
+            # Add delta to implement inequality constraint
+            # https://lmfit.github.io/lmfit-py/constraints.html#using-inequality-constraints
+            if constrain_g1g2:
+                params.add(f"delta{band}", min=0, value=0.5, max=1, vary=True)
+                params.add(f"G2{band}", expr=f"delta{band}-G1{band}", min=0.0, max=1)
+
+            else:
+                params.add(f"G2{band}", value=0.15, min=0.0, max=1)
+
+        # Fitting all bands at once with SOCCA
+        params.add(f"period", value=self.period, min=0.1, max=1)
+        params.add(f"alpha", value=np.radians(self.alpha), min=0.0, max=2 * np.pi)
+        params.add(f"delta", value=np.radians(self.delta), min=-np.pi / 2, max=np.pi / 2)
+        params.add(f"a_b", value=1.15, min=1, max=5)
+        params.add(f"a_c", value=1.5, min=1, max=5)
+        params.add(f"W0", value=np.radians(self.W0), min=-np.pi, max=np.pi)
+        params.add(f"t0", value=pc.epoch.median(), vary=False)
+
+        if weights is None:
+            weights = np.ones(pc.mag.shape)
+
+        out = lmfit.minimize(
+            residual,
+            params,
+            args=(
+                np.radians(pc.phase),
+                pc.mag,
+                weights,
+                pc.band,
+                np.radians(pc.ra),
+                np.radians(pc.dec),
+            ),
+            method="least_squares",
+            jac="2-point",
+            loss="soft_l1",
+        )
+
+        for name, param in out.params.items():
+            if name in ["alpha", "delta", "W0"]:
+                setattr(self, name, np.degrees(param.value))
+                continue
+            setattr(self, name, param.value)
+            setattr(self, f"{name}_err", param.stderr)
+        pc.fitted_models.add("SOCCA")
 
 
 def build_eqs_for_spins(x, filters=[], ph=[], ra=[], dec=[], rhs=[]):
@@ -655,12 +876,6 @@ def func_hg1g2(ph, h, g1, g2):
     return h + func1
 
 
-def spin_angle(ra, dec, alpha, delta):
-    return np.sin(dec) * np.sin(delta) + np.cos(dec) * np.cos(delta) * np.cos(
-        ra - alpha
-    )
-
-
 def func_hg1g2_with_spin(pha, h, g1, g2, R, alpha, delta):
     """Return f(H, G1, G2, R, alpha, delta) part of the lightcurve in mag space
 
@@ -694,7 +909,7 @@ def func_hg1g2_with_spin(pha, h, g1, g2, R, alpha, delta):
     func1 = func_hg1g2(ph, h, g1, g2)
 
     # Spin part
-    geo = spin_angle(ra, dec, alpha, delta)
+    geo = cos_aspect_angle(ra, dec, alpha, delta)
     func2 = 1 - (1 - R) * np.abs(geo)
     func2 = 2.5 * np.log10(func2)
 
@@ -758,9 +973,9 @@ def _has_phase_and_mag(pc, model):
     assert pc.mag is not None, f"No magnitudes provided. Cannot fit {model} model."
 
     if pc.phase is None:
-        assert (
-            pc.epoch is not None and pc.target is not None
-        ), f"Neither phase nor target nor observation epoch provided. Cannot fit {model} model."
+        assert pc.epoch is not None and pc.target is not None, (
+            f"Neither phase nor target nor observation epoch provided. Cannot fit {model} model."
+        )
 
         print("No phase angles provided but epoch and target found.")
         pc.get_ephems()
