@@ -11,7 +11,7 @@ def query(name, epochs):
     name : str
         Name or designation of asteroid.
     epochs : list
-        List of observation epochs in MJD format.
+        List of observation epochs in JD format.
 
     Returns
     -------

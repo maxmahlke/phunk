@@ -575,6 +575,7 @@ class SOCCA:
         W0=np.nan,
         t0=np.nan,
         bands=None,
+        pinit=None
     ):
         """SOCCA phase curve model.
 
@@ -604,6 +605,8 @@ class SOCCA:
         self.NAME = "SOCCA"
         self.PARAMS = ("H", "G1", "G2", "period", "alpha", "delta", "a_b", "a_c", "W0")
 
+        self.pinit = pinit
+        
         if bands is None:
             bands = [""]
 
@@ -726,6 +729,8 @@ class SOCCA:
     def fit(self, pc, weights=None, constrain_g1g2=False):
         """Fit a phase curve using the SOCCA model."""
 
+        print(pc.epoch)
+
         params = lmfit.Parameters()
 
         for band in set(pc.band):
@@ -748,7 +753,8 @@ class SOCCA:
         params.add(f"a_b", value=1.15, min=1, max=5)
         params.add(f"a_c", value=1.5, min=1, max=5)
         params.add(f"W0", value=np.radians(self.W0), min=-np.pi, max=np.pi)
-        params.add(f"t0", value=pc.epoch.median(), vary=False)
+        # params.add(f"t0", value=pc.epoch.median(), vary=False)
+        params.add(f"t0", value=self.t0, vary=False)
 
         if weights is None:
             weights = np.ones(pc.mag.shape)

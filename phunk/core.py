@@ -67,7 +67,7 @@ class PhaseCurve:
         #     setattr(self, f"phase_min_{band}", obs_.phase.min())
         #     setattr(self, f"phase_max_{band}", obs_.phase.max())
 
-    def fit(self, models=None):
+    def fit(self, models=None, pinit=None):
         """Fit the phase curve in the different bands with the different models."""
 
         if models is None:
@@ -82,6 +82,9 @@ class PhaseCurve:
             # Add photometric model instance to PhaseCurve and pass band information
             setattr(self, model, getattr(phunk.models, model)(bands=set(self.band)))
 
+            # if pinit is not None:
+            #     setattr(self.model, pinit, pinit)
+
             if getattr(self, model).is_fittable(self):
                 getattr(self, model).fit(self)
 
@@ -95,9 +98,9 @@ class PhaseCurve:
         print("Querying ephemerides via IMCCE Miriade..")
         ephem = phunk.miriade.query(self.target.name, self.epoch)
 
-        self.phase = ephem["phase"]
-        self.ra = np.degrees(ephem["ra_j2000"])
-        self.dec = np.degrees(ephem["dec_j2000"])
+        self.phase = ephem["Phase"]
+        self.ra = ephem["RA"]
+        self.dec = ephem["DEC"]
 
     @property
     def bands(self):
