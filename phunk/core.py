@@ -67,7 +67,7 @@ class PhaseCurve:
         #     setattr(self, f"phase_min_{band}", obs_.phase.min())
         #     setattr(self, f"phase_max_{band}", obs_.phase.max())
 
-    def fit(self, models=None, pinit=None):
+    def fit(self, models=None, p0=None):
         """Fit the phase curve in the different bands with the different models."""
 
         if models is None:
@@ -80,10 +80,11 @@ class PhaseCurve:
                 )
 
             # Add photometric model instance to PhaseCurve and pass band information
-            setattr(self, model, getattr(phunk.models, model)(bands=set(self.band)))
-
-            # if pinit is not None:
-            #     setattr(self.model, pinit, pinit)
+            setattr(
+                self,
+                model,
+                getattr(phunk.models, model)(bands=set(self.band), p0=p0),
+            )
 
             if getattr(self, model).is_fittable(self):
                 getattr(self, model).fit(self)
