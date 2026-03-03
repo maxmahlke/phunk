@@ -787,7 +787,7 @@ class SOCCA:
             setattr(self, f"{name}_err", param.stderr)
         pc.fitted_models.add("SOCCA")
 
-
+# --------------------------------------------------------------------------------
 def build_eqs_for_spins(x, filters=[], ph=[], ra=[], dec=[], rhs=[]):
     """Build the system of equations to solve using the HG1G2 + spin model
 
@@ -916,7 +916,7 @@ def func_shg1g2(pha, h, g1, g2, R, alpha, delta):
     dec = pha[2]
 
     # Standard HG1G2 part: h + f(alpha, G1, G2)
-    func1 = func_hg1g2(ph, h, g1, g2)
+    func1 = phot.HG1G2().evaluate(ph, h, g1, g2)
 
     # Spin part
     geo = cos_aspect_angle(ra, dec, alpha, delta)
