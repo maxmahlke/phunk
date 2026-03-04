@@ -21,19 +21,29 @@ def query(name, epochs):
 
     # Pass sorted list of epochs to speed up query
     # Have to convert them to JD
-    epochs = [Time(str(e), format="mjd").jd for e in epochs]
+    epochs = [Time(str(e), format="jd").jd for e in epochs]
     files = {"epochs": ("epochs", "\n".join(["%.6f" % epoch for epoch in epochs]))}
 
     # ------
     # Query Miriade for phase angles
     url = "https://ssp.imcce.fr/webservices/miriade/api/ephemcc.php?"
 
+    # params = {
+    #     "-name": f"a:{name}",
+    #     "-mime": "json",
+    #     "-output": "--jul,--iofile(ephemcc-photom.xml)",
+    #     "-tscale": "UTC",
+    # }
     params = {
-        "-name": f"a:{name}",
+        "-name": f"{name}",
         "-mime": "json",
-        "-output": "--jul,--iofile(ephemcc-photom.xml)",
+        "-rplane": "1",
+        "-tcoor": 5,
+        "-output": "--jd",
+        "-observer": "500",
         "-tscale": "UTC",
     }
+    params['-output'] += f",--iofile(ephemcc-photom.xml)"
 
     # Execute query
     try:
@@ -47,5 +57,4 @@ def query(name, epochs):
         ephem = pd.DataFrame.from_dict(j["data"])
     except KeyError:
         return False
-
     return ephem
