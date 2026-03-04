@@ -17,6 +17,8 @@ class PhaseCurve:
         epoch=None,
         ra=None,
         dec=None,
+        ra_s=None,
+        dec_s=None,
         band=None,
     ):
         """Create a phase curve and add observations to it.
@@ -45,6 +47,8 @@ class PhaseCurve:
         self.epoch = np.array(epoch) if epoch is not None else epoch
         self.ra = np.array(ra) if ra is not None else ra
         self.dec = np.array(dec) if dec is not None else dec
+        self.ra_s = np.array(ra_s) if ra_s is not None else ra_s
+        self.dec_s = np.array(dec_s) if dec_s is not None else dec_s
         self.band = np.array(band).astype(str) if band is not None else band
 
         if self.band is None:
@@ -110,7 +114,9 @@ class PhaseCurve:
         self.phase = ephem["Phase"]
         self.ra = ephem["RA"]
         self.dec = ephem["DEC"]
-
+        self.ra_s = ephem["RA_h"]
+        self.dec_s = ephem["DEC_h"]
+        
     @property
     def bands(self):
         """Compute number of unique observation bands."""
