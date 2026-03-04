@@ -47,7 +47,7 @@ class HG:
         params = lmfit.Parameters()
 
         for band in pc.bands:
-            params.add("H", value=15, min=0, max=30)
+            params.add("H", value=15, min=-3, max=30)
             params.add("G", value=0.15, min=0, max=1.0)
 
             phase = pc.phase[pc.band == band]
@@ -121,7 +121,7 @@ class HG1G2:
 
         for band in pc.bands:
             params = lmfit.Parameters()
-            params.add(f"H", value=15, min=0, max=30)
+            params.add(f"H", value=15, min=-3, max=30)
             params.add(f"G1", value=0.15, min=0, max=1.0)
 
             if constrain_g1g2:
@@ -204,7 +204,7 @@ class HG12:
 
         for band in pc.bands:
             params = lmfit.Parameters()
-            params.add("H", value=15, min=0, max=30)
+            params.add("H", value=15, min=-3, max=30)
             params.add("G12", value=0.3, min=0, max=1.0)
 
             phase = pc.phase[pc.band == band]
@@ -730,6 +730,7 @@ class SOCCA:
 
         return True
 
+
     def fit(self, pc, weights=None, constrain_g1g2=False):
         """Fit a phase curve using the SOCCA model."""
 
@@ -856,35 +857,6 @@ def build_eqs_for_spins(x, filters=[], ph=[], ra=[], dec=[], rhs=[]):
     return np.ravel(eqs)
 
 
-def func_hg1g2(ph, h, g1, g2):
-    """Return f(H, G1, G2) part of the lightcurve in mag space
-
-    Parameters
-    ----------
-    ph: array-like
-        Phase angle in radians
-    h: float
-        Absolute magnitude in mag
-    G1: float
-        G1 parameter (no unit)
-    G2: float
-        G2 parameter (no unit)
-
-    Returns
-    ----------
-    out: array of floats
-        H - 2.5 log(f(G1G2))
-    """
-    # Standard G1G2 part
-    func1 = (
-        g1 * phot.HG1G2._phi1(ph)
-        + g2 * phot.HG1G2._phi2(ph)
-        + (1 - g1 - g2) * phot.HG1G2._phi3(ph)
-    )
-    func1 = -2.5 * np.log10(func1)
-
-    return h + func1
-
 
 def func_shg1g2(pha, h, g1, g2, R, alpha, delta):
     """Return f(H, G1, G2, R, alpha, delta) part of the lightcurve in mag space
@@ -962,7 +934,8 @@ def func_socca(pha, h, g1, g2, alpha0, delta0, period, a_b, a_c, phi0, t0):
     ep = pha[3]
 
     # Standard HG1G2 part: h + f(alpha, G1, G2)
-    func1 = func_hg1g2(ph, h, g1, g2)
+    # func1 = func_hg1g2(ph, h, g1, g2)
+    func1 = phot.HG1G2().evaluate(ph, h, g1, g2)
 
     # Spin part
     cos_aspect = cos_aspect_angle(ra, dec, alpha0, delta0)

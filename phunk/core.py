@@ -80,11 +80,19 @@ class PhaseCurve:
                 )
 
             # Add photometric model instance to PhaseCurve and pass band information
-            setattr(
-                self,
-                model,
-                getattr(phunk.models, model)(bands=set(self.band), p0=p0),
-            )
+            # TBD: p0 for all models? or keep if .. else here?
+            if model=='SOCCA':
+                setattr(
+                    self,
+                    model,
+                    getattr(phunk.models, model)(bands=set(self.band), p0=p0),
+                )
+            else:
+                setattr(
+                    self,
+                    model,
+                    getattr(phunk.models, model)(bands=set(self.band)),
+                )
 
             if getattr(self, model).is_fittable(self):
                 getattr(self, model).fit(self)
