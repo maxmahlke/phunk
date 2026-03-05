@@ -172,7 +172,8 @@ def residual_shg1g2(pars, phase, mag, weights, bands, ra, dec):
     # params = x[3:]
     params = [value for name, value in pars.items() if not name.startswith("delta")]
     params += [delta]
-    params = params[:-3]
+    params = params[:-3] # These are the F.D.
+    # print(params)
     filternames = [
         param.name[1:] for param in pars.values() if param.name.startswith("H")
     ]
@@ -206,32 +207,24 @@ def residual_shg1g2(pars, phase, mag, weights, bands, ra, dec):
 
 
 def residual_socca(pars, phase, mag, weights, bands, ra, dec, ep, ra_s, dec_s):
-    """Build the system of equations to solve using the HG1G2 + spin model
-
-    ```
-    x = [
-        R, alpha, delta,
-        h_g, g_1_g, g_2_g,
-        h_r, g_1_r, g_2_r
-    ]
-    ```
+    """
 
     """
-    alpha, delta, period, a_b, a_c, W0 = (
+    alpha, delta, period, a_b, a_c, W0, _ = (
         pars["alpha"],
         pars["delta"],
         pars["period"],
         pars["a_b"],
         pars["a_c"],
         pars["W0"],
+        pars["t0"]
     )
 
     # filternames = np.unique(bands)
-
     # params = x[3:]
-    params = [value for name, value in pars.items()]
-    # params += [delta]
-    params = params[:-3]
+    params = [value for _, value in pars.items()]
+    # params += [W0]
+    params = params[:-7]
     filternames = [
         param.name[1:] for param in pars.values() if param.name.startswith("H")
     ]
@@ -242,8 +235,8 @@ def residual_socca(pars, phase, mag, weights, bands, ra, dec, ep, ra_s, dec_s):
     params_per_band = np.reshape(params, (len(filternames), int(nparams)))
     eqs = []
     for index, filtername in enumerate(filternames):
-        mask = bands == filtername
 
+        mask = bands == filtername
         myfunc = (
             func_socca(
                 np.vstack(
@@ -267,7 +260,7 @@ def residual_socca(pars, phase, mag, weights, bands, ra, dec, ep, ra_s, dec_s):
                 W0,
             )
             - mag[mask]
-        )
+        ) / (1 / weights[mask])  # weighting by inverse mag_err
 
         eqs = np.concatenate((eqs, myfunc))
 

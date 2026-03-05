@@ -754,15 +754,15 @@ class SOCCA:
                 params.add(f"G2{band}", value=0.15, min=0.0, max=1)
 
         # Fitting all bands at once with SOCCA
-        params.add(f"period", value=self.period, min=0.05, max=1e5)
-        params.add(f"alpha", value=np.radians(self.alpha), min=0.0, max=2 * np.pi)
+        params.add("period", value=self.period, min=0.05, max=1e5)
+        params.add("alpha", value=np.radians(self.alpha), min=0.0, max=2 * np.pi)
         params.add(
-            f"delta", value=np.radians(self.delta), min=-np.pi / 2, max=np.pi / 2
+            "delta", value=np.radians(self.delta), min=-np.pi / 2, max=np.pi / 2
         )
-        params.add(f"a_b", value=1.15, min=1, max=5)
-        params.add(f"a_c", value=1.5, min=1, max=5)
-        params.add(f"W0", value=np.radians(self.W0), min=-np.pi, max=np.pi)
-        params.add(f"t0", value=self.t0, vary=False)
+        params.add("a_b", value=1.15, min=1, max=5)
+        params.add("a_c", value=1.5, min=1, max=5)
+        params.add("W0", value=np.radians(self.W0), min=-np.pi, max=np.pi)
+        params.add("t0", value=self.t0, vary=False)
 
         if weights is None:
             weights = np.ones(pc.mag.shape)
@@ -778,7 +778,7 @@ class SOCCA:
                 np.radians(pc.dec),
                 pc.epoch,
                 np.radians(pc.ra_s),
-                np.radians(pc.dec_s)
+                np.radians(pc.dec_s),
             ),
             method="least_squares",
             jac="2-point",
@@ -790,7 +790,7 @@ class SOCCA:
                 setattr(self, name, np.degrees(param.value))
                 continue
             setattr(self, name, param.value)
-            setattr(self, f"{name}_err", param.stderr)
+            # setattr(self, f"{name}_err", param.stderr)
         pc.fitted_models.add("SOCCA")
 
 
