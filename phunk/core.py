@@ -71,7 +71,7 @@ class PhaseCurve:
         #     setattr(self, f"phase_min_{band}", obs_.phase.min())
         #     setattr(self, f"phase_max_{band}", obs_.phase.max())
 
-    def fit(self, models=None, p0=None):
+    def fit(self, models=None, p0=None, remap=False):
         """Fit the phase curve in the different bands with the different models."""
 
         if models is None:
@@ -89,7 +89,7 @@ class PhaseCurve:
                 setattr(
                     self,
                     model,
-                    getattr(phunk.models, model)(bands=set(self.band), p0=p0),
+                    getattr(phunk.models, model)(bands=set(self.band), p0=p0, remap=remap),
                 )
             else:
                 setattr(
