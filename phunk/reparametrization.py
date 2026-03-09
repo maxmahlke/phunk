@@ -277,7 +277,7 @@ def prop_G2_err(G1, u_G2, err_u_G2):
     err_G2 : float
         Propagated 1-sigma uncertainty on G2.
     """
-    U, L = compute_LU_bounds(G1)
+    L, U = compute_LU_bounds(G1)
     err_G2 = (U - L) * (1 - sigmoid(u_G2)) * sigmoid(u_G2) * err_u_G2
     return err_G2
 
@@ -336,58 +336,6 @@ def prop_ac_err(a_b, u_a_c, err_u_a_c, err_a_b):
     err_a_c = np.sqrt(term1 + term2 + term3)
     return err_a_c
 
-
-def propagate_errors_old(
-    popt,
-    perr,
-):
-    """
-    Propagate fitted parameter uncertainties to physical parameter uncertainties
-
-    Parameters
-    ----------
-    popt : array-like
-        Best-fit parameter values.
-    perr : array-like
-        1-sigma uncertainties on the fitted parameters.
-    use_angles : bool, optional
-        If True, propagate errors from Cartesian coordinates to angles.
-    use_shape : bool, optional
-        If True, include shape parameter error propagation.
-    use_phase : bool, optional
-        If True, propagate error on the phase parameter.
-    use_filter_dependent : bool, optional
-        If True, propagate errors on filter-dependent (H, G1, G2) parameters.
-
-    Returns
-    -------
-    out : list
-        Propagated 1-sigma uncertainties in the same order as the least square output parameters.:
-        [err_alpha0, err_delta0, err_period, err_a/b, err_a/c, err_phi0, err_H1, err_G1_1, err_G2_1, ...]
-    """
-    out = []
-    err_P, err_X, err_Y, err_Z, err_ab, err_ac, err_phi0 = perr[:7]
-    err_f = perr[7:]
-    period, X, Y, Z, ab, ac, phi0 = popt[:7]
-    filt_dependent = popt[7:]
-    err_alpha0, err_delta0 = prop_angle_error(X, Y, Z, err_X, err_Y, err_Z)
-    out.extend([err_alpha0, err_delta0, err_P])
-    err_ab_u = float(err_ab)
-    err_ab = prop_ab_err(u_a_b=ab, err_u_a_b=err_ab)
-    ab = 4 * sigmoid(ab) + 1
-    err_ac = prop_ac_err(a_b=ab, u_a_c=ac, err_u_a_c=err_ac, err_a_b=err_ab_u)
-    out.extend([err_ab, err_ac])
-
-    err_phi0 = prop_phase_error(u_phi0=phi0, err_u_phi0=err_phi0)
-    out.extend([err_phi0])
-    for i in range(0, len(err_f), 3):
-        err_H = err_f[i]
-        err_G1 = prop_G1_err(u_G1=filt_dependent[i + 1], err_u_G1=err_f[i + 1])
-        G1 = sc_sigmoid(filt_dependent[i + 1])
-        err_G2 = prop_G2_err(G1=G1, u_G2=filt_dependent[i + 2], err_u_G2=err_f[i + 2])
-        out.extend([err_H, err_G1, err_G2])
-    return out
-
 def propagate_errors(params_dict, err_dict, filt_names=None):
     """
     Propagate errors from a dictionary of fit parameters to physical parameters,
@@ -443,10 +391,10 @@ def propagate_errors(params_dict, err_dict, filt_names=None):
     out_errs["W0"] = err_W0
 
     # Filter-dependent
-    for i, band in enumerate(filt_names):
-        H = params_dict.get(f"H{band}", None)
-        G1 = params_dict.get(f"u_G1{band}", None) or params_dict.get(f"G1{band}", None)
-        G2 = params_dict.get(f"u_G2{band}", None) or params_dict.get(f"G2{band}", None)
+    for band in filt_names:
+        # H = params_dict.get(f"H{band}", None)
+        G1 = params_dict.get(f"u_G1{band}", None) 
+        G2 = params_dict.get(f"u_G2{band}", None) 
 
         err_H = err_dict.get(f"H{band}", None)
         err_G1 = prop_G1_err(u_G1=G1, err_u_G1=err_dict.get(f"u_G1{band}", None))
@@ -461,162 +409,6 @@ def propagate_errors(params_dict, err_dict, filt_names=None):
     out_errs["t0"] = err_dict.get("t0", None)
 
     return out_errs
-
-
-def parameter_remapping_old(
-    x,
-    physical_to_latent=True,
-    use_angles=True,  # (alpha0, delta0) <-> (X,Y,Z)
-    use_shape=True,  # (a/b, a/c)
-    use_phase=True,  # phi0
-    use_filter_dependent=True,  # filter parameters
-):
-    """
-    Convert between physical and latent parameter representations.
-
-    Allows modular reparametrization of the follwoing blocks:
-    - Spin axis/period: (alpha0, delta0, period)
-    - Shape ratios: (a_b, a_c)
-    - Phase: phi0
-    - H, G1, G2
-
-    Parameters
-    ----------
-    x : array-like
-        Input parameter vector (rho, alpha0, delta0, period, a/b, a/c, phi0, H, G1, G2 | period X, Y, Z, u_a/b, u_a/c, u_phi0, H, u_G1, u_G2).
-    physical_to_latent : bool, default=True
-        Direction of conversion. If True, maps physical -> latent
-        if False, maps latent -> physical.
-    use_angles : bool, default=True
-        Whether to reparametrize the angle block.
-    use_shape : bool, default=True
-        Whether to reparametrize the shape block.
-    use_phase : bool, default=True
-        Whether to reparametrize the initial phase.
-    use_filter_dependent : bool, default=True
-        Whether to reparametrize the filter dependent block.
-
-    Returns
-    -------
-    np.ndarray
-        Parameter vector in the target representation (physical or latent),
-        with blocks transformed according to the flags.
-    """
-    x = np.asarray(x)
-    idx = 0
-    out = []
-
-    if physical_to_latent:
-        # -------------------------
-        # Physical -> Latent
-        # -------------------------
-        if use_angles:
-            rho, alpha0, delta0 = x[idx : idx + 3]
-            idx += 4
-            X = rho * np.cos(delta0) * np.cos(alpha0)
-            Y = rho * np.cos(delta0) * np.sin(alpha0)
-            Z = rho * np.sin(delta0)
-
-            u_Period = x[idx - 1]
-
-            out.extend([u_Period, X, Y, Z])
-        else:
-            out.extend(x[idx : idx + 3])
-            idx += 3
-        if use_shape:
-            a_b, a_c = x[idx : idx + 2]
-            idx += 2
-
-            u_a_b = logit((a_b - 1) / 4)
-            u_a_c = logit((a_c - a_b) / (5 - a_b))
-
-            out.extend([u_a_b, u_a_c])
-        else:
-            out.extend(x[idx : idx + 2])
-            idx += 2
-
-        if use_phase:
-            phi0 = x[idx]
-            idx += 1
-
-            u_phi0 = logit((phi0 + np.pi / 2) / np.pi)
-            out.append(u_phi0)
-        else:
-            out.append(x[idx])
-            idx += 1
-
-        # Filter dependent
-        if use_filter_dependent:
-            filter_dependent = x[idx:]
-            u_filters = []
-            for i in range(0, len(filter_dependent), 3):
-                H, G1, G2 = filter_dependent[i : i + 3]
-                u_H = H
-                u_G1 = sc_logit(G1)
-                L, U = compute_LU_bounds(G1)
-                u_G2 = logit((G2 - L) / (U - L))
-                u_filters.extend([u_H, u_G1, u_G2])
-            out.extend(u_filters)
-        else:
-            out.extend(x[idx:])
-
-    else:
-        # -------------------------
-        # Latent -> Physical
-        # -------------------------
-        if use_angles:
-            idx = 1
-            X, Y, Z = x[idx : idx + 3]
-            idx += 3
-            rho = np.sqrt(X**2 + Y**2 + Z**2)
-            delta0 = np.arcsin(Z / rho)
-            alpha0 = np.arctan2(Y, X) % (2 * np.pi)
-
-            out.extend([alpha0, delta0])  # FIXME
-            out.extend([x[0]])  # uPeriod -> Period
-
-        else:
-            out.extend(x[idx : idx + 3])
-            idx += 3
-
-        if use_shape:
-            u_a_b, u_a_c = x[idx : idx + 2]
-            idx += 2
-
-            a_b = 4 * sigmoid(u_a_b) + 1
-            a_c = (5 - a_b) * sigmoid(u_a_c) + a_b
-
-            out.extend([a_b, a_c])
-        else:
-            out.extend(x[idx : idx + 2])
-            idx += 2
-
-        if use_phase:
-            u_phi0 = x[idx]
-            idx += 1
-
-            phi0 = np.pi * sigmoid(u_phi0) - np.pi / 2
-            out.append(phi0)
-        else:
-            out.append(x[idx])
-            idx += 1
-
-        if use_filter_dependent:
-            filter_dependent = x[idx:]
-            filters = []
-            for i in range(0, len(filter_dependent), 3):
-                u_H, u_G1, u_G2 = filter_dependent[i : i + 3]
-                H = u_H
-                G1 = sc_sigmoid(u_G1)
-                L, U = compute_LU_bounds(G1)
-                G2 = L + (U - L) * sigmoid(u_G2)
-                filters.extend([H, G1, G2])
-            out.extend(filters)
-        else:
-            out.extend(x[idx:])
-
-    return np.array(out)
-
 
 def parameter_remapping(
     pars,
@@ -770,14 +562,14 @@ def parameter_remapping(
 
 def lmfit_to_dict(params):
     """
-    because lmfit is pure shit
+    
     """
     return {name: p.value for name, p in params.items()}
 
 
 def dict_to_lmfit(par_dict, template_params):
     """
-    same as above
+    
     """
 
     new_params = lmfit.Parameters()

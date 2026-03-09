@@ -745,91 +745,16 @@ class SOCCA:
 
         return True
 
-    def fit_old(
-        self,
-        pc,
-        weights=None,
-    ):
-        """Fit a phase curve using the SOCCA model."""
-        lower_bounds, upper_bounds = build_bounds()
-
-        params = lmfit.Parameters()
-        for band in set(pc.band):
-            params.add(f"H{band}", value=15, min=lower_bounds[0], max=upper_bounds[0])
-            params.add(
-                f"G1{band}", value=0.15, min=lower_bounds[1], max=upper_bounds[1]
-            )
-
-            params.add(
-                f"G2{band}", value=0.15, min=lower_bounds[2], max=upper_bounds[2]
-            )
-
-        # Fitting all bands at once with SOCCA
-
-        params.add(
-            "alpha",
-            value=np.radians(self.alpha),
-            min=lower_bounds[3],
-            max=upper_bounds[3],
-        )
-        params.add(
-            "delta",
-            value=np.radians(self.delta),
-            min=lower_bounds[4],
-            max=upper_bounds[4],
-        )
-        params.add(
-            "period", value=self.period, min=lower_bounds[5], max=upper_bounds[5]
-        )
-        params.add("a_b", value=1.15, min=lower_bounds[6], max=upper_bounds[6])
-        params.add("a_c", value=1.5, min=lower_bounds[7], max=upper_bounds[7])
-        params.add(
-            "W0", value=np.radians(self.W0), min=lower_bounds[8], max=upper_bounds[8]
-        )
-        params.add("t0", value=self.t0, vary=False)
-
-        # if self.remap:
-        #     params = parameter_remapping(params)
-
-        if weights is None:
-            weights = np.ones(pc.mag.shape)
-        out = lmfit.minimize(
-            residual_socca,
-            params,
-            args=(
-                np.radians(pc.phase),
-                pc.mag,
-                weights,
-                pc.band,
-                np.radians(pc.ra),
-                np.radians(pc.dec),
-                pc.epoch,
-                np.radians(pc.ra_s),
-                np.radians(pc.dec_s),
-            ),
-            method="least_squares",
-            jac="2-point",
-            loss="soft_l1",
-        )
-
-        for name, param in out.params.items():
-            if name in ["alpha", "delta", "W0"]:
-                setattr(self, name, np.degrees(param.value))
-                continue
-            setattr(self, name, param.value)
-            # setattr(self, f"{name}_err", param.stderr)
-        pc.fitted_models.add("SOCCA")
-
     def fit(self, pc, weights=None):
         """Fit a phase curve using the SOCCA model."""
 
         ### Initialize with unbounded parameters ###
         params = lmfit.Parameters()
         for band in set(pc.band):
-            params.add(f"H{band}", value=15)
-            params.add(f"G1{band}", value=0.15)
-            params.add(f"G2{band}", value=0.15)
-
+            params.add(f"H{band}", value=self.H)
+            params.add(f"G1{band}", value=self.G1)
+            params.add(f"G2{band}", value=self.G2)
+            
         # Fitting all bands at once with SOCCA
         params.add(
             "alpha",
@@ -900,7 +825,6 @@ class SOCCA:
             physical_min = lmfit_to_dict(out_min)
 
         err_dict = {lname: lparam.stderr for lname, lparam in out.params.items()}
-
         if self.remap:
             err_dict = propagate_errors(latent_min, err_dict, filt_names=set(pc.bands))
         for name, param in physical_min.items():
