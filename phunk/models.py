@@ -13,6 +13,7 @@ from phunk.reparametrization import (
     parameter_remapping,
     propagate_errors,
 )
+from scipy.optimize import least_squares
 
 MODELS = ["LinExp", "HG", "HG12", "HG12S", "HG1G2", "sHG1G2", "SOCCA"]
 
@@ -629,7 +630,6 @@ class SOCCA:
             setattr(self, f"H{band}", H)
             setattr(self, f"G1{band}", G1)
             setattr(self, f"G2{band}", G2)
-
         self.period = period
         self.alpha = alpha
         self.delta = delta
@@ -751,10 +751,10 @@ class SOCCA:
         ### Initialize with unbounded parameters ###
         params = lmfit.Parameters()
         for band in set(pc.band):
-            params.add(f"H{band}", value=self.H)
-            params.add(f"G1{band}", value=self.G1)
-            params.add(f"G2{band}", value=self.G2)
-            
+            params.add(f"H{band}", value=getattr(self, f"H{band}"))
+            params.add(f"G1{band}", value=getattr(self, f"G1{band}"))
+            params.add(f"G2{band}", value=getattr(self, f"G2{band}"))
+
         # Fitting all bands at once with SOCCA
         params.add(
             "alpha",
@@ -764,9 +764,9 @@ class SOCCA:
             "delta",
             value=np.radians(self.delta),
         )
-        params.add("period", value=self.period)
-        params.add("a_b", value=1.15)
-        params.add("a_c", value=1.5)
+        params.add("period", value=self.period, vary=False)
+        params.add("a_b", value=self.a_b)
+        params.add("a_c", value=self.a_c)
         params.add("W0", value=np.radians(self.W0))
         params.add("t0", value=self.t0, vary=False)
 
@@ -796,9 +796,22 @@ class SOCCA:
         if weights is None:
             weights = np.ones(pc.mag.shape)
 
-        out = lmfit.minimize(
+        #       Scipy-py-fy
+        dict_params = lmfit_to_dict(params)
+
+        param_names = list(dict_params.keys())
+
+        initial_guess = np.array([dict_params[k] for k in param_names])
+
+        lower_bounds = np.array([lower[k] for k in param_names])
+        upper_bounds = np.array([upper[k] for k in param_names])
+
+        out = least_squares(
             residual_socca,
-            params,
+            x0=initial_guess,
+            bounds=(lower_bounds, upper_bounds),
+            jac="2-point",
+            loss="soft_l1",
             args=(
                 np.radians(pc.phase),
                 pc.mag,
@@ -809,34 +822,44 @@ class SOCCA:
                 pc.epoch,
                 np.radians(pc.ra_s),
                 np.radians(pc.dec_s),
+                param_names,
                 self.remap,
             ),
-            method="least_squares",
-            jac="2-point",
-            loss="soft_l1",
         )
 
-        out_min = out.params
+        # reconstruct parameter dictionary from scipy result
+        latent_min = dict(zip(param_names, out.x))
 
+        # convert latent -> physical if needed
         if self.remap:
-            latent_min = lmfit_to_dict(out_min)
             physical_min = parameter_remapping(latent_min, physical_to_latent=False)
         else:
-            physical_min = lmfit_to_dict(out_min)
+            physical_min = latent_min
 
-        err_dict = {lname: lparam.stderr for lname, lparam in out.params.items()}
+        # --- estimate parameter uncertainties (scipy way)
+        J = out.jac
+        res = out.fun
+        dof = len(res) - len(out.x)
+
+        cov = np.linalg.pinv(J.T @ J) * np.sum(res**2) / dof
+        stderr = np.sqrt(np.diag(cov))
+
+        err_dict = dict(zip(param_names, stderr))
+
+        # propagate if remapped
         if self.remap:
             err_dict = propagate_errors(latent_min, err_dict, filt_names=set(pc.bands))
+
+        # store parameters in object
         for name, param in physical_min.items():
             if name in ["alpha", "delta", "W0"]:
                 setattr(self, name, np.degrees(param))
                 setattr(self, f"{name}_err", np.degrees(err_dict[name]))
-                continue
-            setattr(self, name, param)
-            setattr(self, f"{name}_err", err_dict[name])
+            else:
+                setattr(self, name, param)
+                setattr(self, f"{name}_err", err_dict[name])
 
         pc.fitted_models.add("SOCCA")
-
 
 def _has_phase_and_mag(pc, model):
     """Check that phase curve as magnitude and phase attributes."""

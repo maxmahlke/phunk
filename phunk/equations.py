@@ -97,7 +97,8 @@ def func_socca(pha, h, g1, g2, alpha0, delta0, period, a_b, a_c, phi0):
     # Time( '2022-01-01T00:00:00', format='isot', scale='utc').jd
     # Kinda middle of ZTF
     # TODO: take the middle jd?
-    t0 = ep.mean()
+    t0 = np.median(ep)
+    # t0 = 2459580.5
 
     # Standard HG1G2 part: h + f(alpha, G1, G2)
     func1 = phot.HG1G2().evaluate(ph, h, g1, g2)
@@ -173,7 +174,6 @@ def residual_shg1g2(pars, phase, mag, weights, bands, ra, dec):
     params = [value for name, value in pars.items() if not name.startswith("delta")]
     params += [delta]
     params = params[:-3]  # These are the F.D.
-    # print(params)
     filternames = [
         param.name[1:] for param in pars.values() if param.name.startswith("H")
     ]
@@ -205,57 +205,45 @@ def residual_shg1g2(pars, phase, mag, weights, bands, ra, dec):
 
     return np.ravel(eqs)
 
+def residual_socca(x, phase, mag, weights, bands, ra, dec, ep, ra_s, dec_s, param_names, reparametrize=True):
+    """Residual function for scipy least_squares"""
 
-def residual_socca(pars, phase, mag, weights, bands, ra, dec, ep, ra_s, dec_s, reparametrize=True):
-    """ """
-
-    par_dict = lmfit_to_dict(pars)
+    # reconstruct parameter dictionary
+    par_dict = dict(zip(param_names, x))
 
     # latent -> physical
     if reparametrize:
         par_dict = parameter_remapping(
             par_dict,
-            physical_to_latent=False)
-    alpha, delta, period, a_b, a_c, W0, _ = (
-        par_dict["alpha"],
-        par_dict["delta"],
-        par_dict["period"],
-        par_dict["a_b"],
-        par_dict["a_c"],
-        par_dict["W0"],
-        par_dict["t0"],
-    )
+            physical_to_latent=False
+        )
+
+    alpha = par_dict["alpha"]
+    delta = par_dict["delta"]
+    period = par_dict["period"]
+    a_b = par_dict["a_b"]
+    a_c = par_dict["a_c"]
+    W0 = par_dict["W0"]
+    _ = par_dict["t0"]
     
     filternames = np.unique(bands)
-    # params = x[3:]
-    # params = [value for _, value in pars.items()]
-    # # params += [W0]
-    # params = params[:-7]
-    # filternames = [
-    #     param.name[1:] for param in pars.values() if param.name.startswith("H")
-    # ]
-    # # params = list(pars.values())[:-3]
-    # nparams = len(params) / len(filternames)
-    # # assert int(nparams) == nparams, "You need to input all parameters for all bands"
-
-    # params_per_band = np.reshape(params, (len(filternames), int(nparams)))
     eqs = []
+
     for filtername in filternames:
         mask = bands == filtername
         H = par_dict[f"H{filtername}"]
         G1 = par_dict[f"G1{filtername}"]
         G2 = par_dict[f"G2{filtername}"]
-        
         myfunc = (
             func_socca(
                 np.vstack(
                     [
-                        phase[mask].tolist(),
-                        ra[mask].tolist(),
-                        dec[mask].tolist(),
-                        ep[mask].tolist(),
-                        ra_s[mask].tolist(),
-                        dec_s[mask].tolist(),
+                        phase[mask],
+                        ra[mask],
+                        dec[mask],
+                        ep[mask],
+                        ra_s[mask],
+                        dec_s[mask],
                     ]
                 ),
                 H,
@@ -269,7 +257,7 @@ def residual_socca(pars, phase, mag, weights, bands, ra, dec, ep, ra_s, dec_s, r
                 W0,
             )
             - mag[mask]
-        ) / (1 / weights[mask])  # weighting by inverse mag_err
+        ) / (1 / weights[mask])
 
         eqs = np.concatenate((eqs, myfunc))
 
