@@ -489,8 +489,8 @@ class sHG1G2:
         G1 = self.G1 if not band else getattr(self, f"G1{band}")
         G2 = self.G2 if not band else getattr(self, f"G2{band}")
 
-        alpha = self.alpha if alpha is None else alpha
-        delta = self.delta if delta is None else delta
+        alpha = np.radians(self.alpha) if alpha is None else np.radians(alpha)
+        delta = np.radians(self.delta) if delta is None else np.radians(delta)
         R = self.R if R is None else R
 
         func = func_shg1g2([phase, ra, dec], H, G1, G2, R, alpha, delta)
@@ -512,7 +512,7 @@ class sHG1G2:
 
         return True
 
-    def fit(self, pc, weights=None, constrain_g1g2=False):
+    def fit_old(self, pc, weights=None, constrain_g1g2=False):
         """Fit a phase curve using the sHG1G2 model."""
 
         params = lmfit.Parameters()
@@ -531,7 +531,7 @@ class sHG1G2:
                 params.add(f"G2{band}", value=0.15, min=0.0, max=1)
 
         # Fitting all bands at once with sHG1G2
-        params.add(f"R", value=0.8, min=0.1, max=1)
+        params.add(f"R", value=0.8, min=0.3, max=1)
         params.add(f"alpha", value=np.pi, min=0.0, max=2 * np.pi)
         params.add(f"delta", value=0, min=-np.pi / 2, max=np.pi / 2)
 
@@ -562,6 +562,86 @@ class sHG1G2:
             setattr(self, f"{name}_err", param.stderr)
         pc.fitted_models.add("sHG1G2")
 
+    def fit(self, pc, weights=None):
+        """Fit a phase curve using the sHG1G2 model."""
+
+        params = lmfit.Parameters()
+
+        for band in set(pc.band):
+            params.add(f"H{band}", value=15, min=0, max=30)
+            params.add(f"G1{band}", value=0.15, min=0, max=1.0)
+            params.add(f"G2{band}", value=0.15, min=0.0, max=1)
+
+        # Fitting all bands at once with sHG1G2
+        params.add(f"R", value=0.8, min=0.3, max=1)
+        params.add(f"alpha", value=np.pi, min=0.0, max=2 * np.pi)
+        params.add(f"delta", value=0, min=-np.pi / 2, max=np.pi / 2)
+
+        if weights is None:
+            weights = np.ones(pc.mag.shape)
+
+        #       Scipy-fy
+        dict_params = lmfit_to_dict(params)
+
+        param_names = list(dict_params.keys())
+
+        initial_guess = np.array([dict_params[k] for k in param_names])
+
+        lower_bounds = np.array([params[k].min for k in param_names])
+        upper_bounds = np.array([params[k].max for k in param_names])
+
+        # Diagnostic
+        for name, x0, lo, hi in zip(
+            param_names, initial_guess, lower_bounds, upper_bounds
+        ):
+            if not (lo <= x0 <= hi):
+                print(
+                    f"Initial guess for {name} out of bounds: {x0} not in [{lo}, {hi}]"
+                )
+        out = least_squares(
+            residual_shg1g2,
+            x0=initial_guess,
+            bounds=(lower_bounds, upper_bounds),
+            jac="2-point",
+            loss="soft_l1",
+            args=(
+                np.radians(pc.phase),
+                pc.mag,
+                weights,
+                pc.band,
+                np.radians(pc.ra),
+                np.radians(pc.dec),
+                param_names,
+            ),
+        )
+
+        # reconstruct parameter dictionary from scipy result
+        opt = dict(zip(param_names, out.x))
+
+        # FIXME
+        # --- estimate parameter uncertainties
+        J = out.jac
+        res = out.fun
+        dof = len(res) - len(out.x)
+
+        cov = np.linalg.pinv(J.T @ J) * np.sum(res**2) / dof
+        stderr = np.sqrt(np.diag(cov))
+
+        err_dict = dict(zip(param_names, stderr))
+
+        # store parameters in object
+        rms = np.sqrt(np.mean(res**2))
+        setattr(self, "rms", rms)
+        for name, param in opt.items():
+            if name in ["alpha", "delta"]:
+                setattr(self, name, np.degrees(param))
+                setattr(self, f"{name}_err", np.degrees(err_dict[name]))
+            else:
+                setattr(self, name, param)
+                setattr(self, f"{name}_err", err_dict[name])
+
+        pc.fitted_models.add("SOCCA")
+
 
 class SOCCA:
     """SOCCA phase curve model."""
@@ -581,6 +661,7 @@ class SOCCA:
         bands=None,
         p0=None,
         remap=False,
+        weights=None,
     ):
         """SOCCA phase curve model.
 
@@ -643,16 +724,11 @@ class SOCCA:
             for k, v in p0.items():
                 setattr(self, k, v)
         self.remap = remap
+        self.weights = weights
 
     def eval(
         self,
-        phase,
-        ra,
-        dec,
-        epoch,
-        ra_s,
-        dec_s,
-        band="",
+        pc,
         H=None,
         G1=None,
         G2=None,
@@ -696,16 +772,14 @@ class SOCCA:
         out: array of floats
             H - 2.5 log(f(G1G2)) - 2.5 log(f(R, spin))
         """
-        phase = np.radians(phase)
-        ra = np.radians(ra)
-        dec = np.radians(dec)
+        phase = np.radians(pc.phase)
+        ra = np.radians(pc.ra)
+        dec = np.radians(pc.dec)
 
-        ra_s = np.radians(ra_s)
-        dec_s = np.radians(dec_s)
+        ra_s = np.radians(pc.ra_s)
+        dec_s = np.radians(pc.dec_s)
 
-        H = self.H if not band else getattr(self, f"H{band}")
-        G1 = self.G1 if not band else getattr(self, f"G1{band}")
-        G2 = self.G2 if not band else getattr(self, f"G2{band}")
+        epoch = pc.epoch
 
         period = self.period if period is None else period
         alpha = np.radians(self.alpha) if alpha is None else np.radians(alpha)
@@ -715,20 +789,37 @@ class SOCCA:
         W0 = np.radians(self.W0) if W0 is None else np.radians(W0)
         t0 = self.t0 if t0 is None else t0
 
-        func = func_socca(
-            [phase, ra, dec, epoch, ra_s, dec_s],
-            H,
-            G1,
-            G2,
-            alpha,
-            delta,
-            period,
-            a_b,
-            a_c,
-            W0,
-        )
+        bands = np.asarray(pc.band)
+        mag = np.zeros(len(bands))
 
-        return func
+        for band in pc.bands:
+            mask = bands == band
+
+            Hval = H if H is not None else getattr(self, f"H{band}", None)
+            G1val = G1 if G1 is not None else getattr(self, f"G1{band}", None)
+            G2val = G2 if G2 is not None else getattr(self, f"G2{band}", None)
+
+            mag[mask] = func_socca(
+                [
+                    phase[mask],
+                    ra[mask],
+                    dec[mask],
+                    epoch[mask],
+                    ra_s[mask],
+                    dec_s[mask],
+                ],
+                Hval,
+                G1val,
+                G2val,
+                alpha,
+                delta,
+                period,
+                a_b,
+                a_c,
+                W0,
+            )
+
+        return mag
 
     def is_fittable(self, pc):
         """Check whether phase curve can be fit with SOCCA model."""
@@ -745,30 +836,25 @@ class SOCCA:
 
         return True
 
-    def fit(self, pc, weights=None):
+    def fit(self, pc):
         """Fit a phase curve using the SOCCA model."""
 
         ### Initialize with unbounded parameters ###
         params = lmfit.Parameters()
-        for band in set(pc.band):
-            params.add(f"H{band}", value=getattr(self, f"H{band}"))
-            params.add(f"G1{band}", value=getattr(self, f"G1{band}"))
-            params.add(f"G2{band}", value=getattr(self, f"G2{band}"))
 
         # Fitting all bands at once with SOCCA
-        params.add(
-            "alpha",
-            value=np.radians(self.alpha),
-        )
-        params.add(
-            "delta",
-            value=np.radians(self.delta),
-        )
-        params.add("period", value=self.period, vary=False)
-        params.add("a_b", value=self.a_b)
-        params.add("a_c", value=self.a_c)
-        params.add("W0", value=np.radians(self.W0))
-        params.add("t0", value=self.t0, vary=False)
+        params.add("alpha", value=np.radians(self.alpha), vary=True)
+        params.add("delta", value=np.radians(self.delta), vary=True)
+        params.add("period", value=self.period, vary=True)
+        params.add("a_b", value=self.a_b, vary=True)
+        params.add("a_c", value=self.a_c, vary=True)
+        params.add("W0", value=np.radians(self.W0), vary=True)
+        # params.add("t0", value=self.t0, vary=False)
+
+        for band in np.unique(pc.band):
+            params.add(f"H{band}", value=getattr(self, f"H{band}"), vary=True)
+            params.add(f"G1{band}", value=getattr(self, f"G1{band}"), vary=True)
+            params.add(f"G2{band}", value=getattr(self, f"G2{band}"), vary=True)
 
         ### Reparametrize part ###
         if self.remap:
@@ -793,10 +879,11 @@ class SOCCA:
         for name in params.keys():
             params[name].min = lower[name]
             params[name].max = upper[name]
-        if weights is None:
+        if self.weights is None:
             weights = np.ones(pc.mag.shape)
-
-        #       Scipy-py-fy
+        else:
+            weights = self.weights
+        #       Scipy-fy
         dict_params = lmfit_to_dict(params)
 
         param_names = list(dict_params.keys())
@@ -806,6 +893,15 @@ class SOCCA:
         lower_bounds = np.array([lower[k] for k in param_names])
         upper_bounds = np.array([upper[k] for k in param_names])
 
+        # Diagnostic
+        for name, x0, lo, hi in zip(
+            param_names, initial_guess, lower_bounds, upper_bounds
+        ):
+            if not (lo <= x0 <= hi):
+                print(
+                    f"Initial guess for {name} out of bounds: {x0} not in [{lo}, {hi}]"
+                )
+        # print(initial_guess)
         out = least_squares(
             residual_socca,
             x0=initial_guess,
@@ -836,7 +932,8 @@ class SOCCA:
         else:
             physical_min = latent_min
 
-        # --- estimate parameter uncertainties (scipy way)
+        # FIXME
+        # --- estimate parameter uncertainties
         J = out.jac
         res = out.fun
         dof = len(res) - len(out.x)
@@ -851,6 +948,8 @@ class SOCCA:
             err_dict = propagate_errors(latent_min, err_dict, filt_names=set(pc.bands))
 
         # store parameters in object
+        rms = np.sqrt(np.mean(res**2))
+        setattr(self, "rms", rms)
         for name, param in physical_min.items():
             if name in ["alpha", "delta", "W0"]:
                 setattr(self, name, np.degrees(param))
@@ -860,6 +959,7 @@ class SOCCA:
                 setattr(self, f"{name}_err", err_dict[name])
 
         pc.fitted_models.add("SOCCA")
+
 
 def _has_phase_and_mag(pc, model):
     """Check that phase curve as magnitude and phase attributes."""

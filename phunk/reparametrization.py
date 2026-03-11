@@ -1,15 +1,26 @@
 import numpy as np
 import lmfit
 
+# # FIXME
+# # Source - https://stackoverflow.com/a/30368735
+# # Posted by niekas, modified by community. See post 'Timeline' for change history
+# # Retrieved 2026-03-10, License - CC BY-SA 4.0
+
+# import warnings
+# warnings.filterwarnings("error")
+# # FIXME
+
 
 def sigmoid(x):
     """
     Compute the sigmoid function.
     Maps any real number to the interval (0, 1).
     """
+    # try:
+    #     return 1 / (1 + np.exp(-x))
+    # except RuntimeWarning:
+    #     print(x)
     return 1 / (1 + np.exp(-x))
-
-
 def sc_sigmoid(x, C=-0.429, R=1.429 + np.abs(-0.429), k=1, In=0):
     """
     Compute the scaled sigmoid function.
@@ -437,7 +448,7 @@ def parameter_remapping(
     """
     pars_out = {}
     pars = dict(pars)
-
+    
     # -----------------------------
     # Angles / period
     # -----------------------------
