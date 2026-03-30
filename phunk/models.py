@@ -4,7 +4,18 @@ import lmfit
 import numpy as np
 from sbpy import photometry as phot
 
-MODELS = ["LinExp", "HG", "HG12", "HG12S", "HG1G2", "sHG1G2"]
+from phunk.geometry import cos_aspect_angle, rotation_phase, subobserver_longitude
+from phunk.equations import residual_shg1g2, residual_socca, func_shg1g2, func_socca
+from phunk.reparametrization import (
+    build_bounds,
+    dict_to_lmfit,
+    lmfit_to_dict,
+    parameter_remapping,
+    propagate_errors,
+)
+from scipy.optimize import least_squares
+
+MODELS = ["LinExp", "HG", "HG12", "HG12S", "HG1G2", "sHG1G2", "SOCCA"]
 
 
 class HG:
@@ -45,7 +56,7 @@ class HG:
         params = lmfit.Parameters()
 
         for band in pc.bands:
-            params.add("H", value=15, min=0, max=30)
+            params.add("H", value=15, min=-3, max=30)
             params.add("G", value=0.15, min=0, max=1.0)
 
             phase = pc.phase[pc.band == band]
@@ -119,7 +130,7 @@ class HG1G2:
 
         for band in pc.bands:
             params = lmfit.Parameters()
-            params.add(f"H", value=15, min=0, max=30)
+            params.add(f"H", value=15, min=-3, max=30)
             params.add(f"G1", value=0.15, min=0, max=1.0)
 
             if constrain_g1g2:
@@ -202,7 +213,7 @@ class HG12:
 
         for band in pc.bands:
             params = lmfit.Parameters()
-            params.add("H", value=15, min=0, max=30)
+            params.add("H", value=15, min=-3, max=30)
             params.add("G12", value=0.3, min=0, max=1.0)
 
             phase = pc.phase[pc.band == band]
@@ -478,18 +489,13 @@ class sHG1G2:
         G1 = self.G1 if not band else getattr(self, f"G1{band}")
         G2 = self.G2 if not band else getattr(self, f"G2{band}")
 
-        alpha = self.alpha if alpha is None else alpha
-        delta = self.delta if delta is None else delta
+        alpha = np.radians(self.alpha) if alpha is None else np.radians(alpha)
+        delta = np.radians(self.delta) if delta is None else np.radians(delta)
         R = self.R if R is None else R
 
-        # Standard HG1G2 part: h + f(alpha, G1, G2)
-        func1 = phot.HG1G2().evaluate(phase, H, G1, G2)
+        func = func_shg1g2([phase, ra, dec], H, G1, G2, R, alpha, delta)
 
-        # Spin part
-        geo = spin_angle(ra, dec, alpha, delta)
-        func2 = 1 - (1 - self.R) * np.abs(geo)
-        func2 = 2.5 * np.log10(func2)
-        return func1 + func2
+        return func
 
     def is_fittable(self, pc):
         """Check whether phase curve can be fit with sHG1G2 model."""
@@ -497,16 +503,16 @@ class sHG1G2:
 
         # Do we have RA and Dec?
         if pc.ra is None or pc.dec is None:
-            assert (
-                pc.epoch is not None and pc.target is not None
-            ), f"Neither RA/Dec nor target nor observation epoch provided. Cannot fit {self.NAME} model."
+            assert pc.epoch is not None and pc.target is not None, (
+                f"Neither RA/Dec nor target nor observation epoch provided. Cannot fit {self.NAME} model."
+            )
 
             print("No RA or Dec provided but epoch and target found.")
             pc.get_ephems()
 
         return True
 
-    def fit(self, pc, weights=None, constrain_g1g2=False):
+    def fit_old(self, pc, weights=None, constrain_g1g2=False):
         """Fit a phase curve using the sHG1G2 model."""
 
         params = lmfit.Parameters()
@@ -525,7 +531,7 @@ class sHG1G2:
                 params.add(f"G2{band}", value=0.15, min=0.0, max=1)
 
         # Fitting all bands at once with sHG1G2
-        params.add(f"R", value=0.8, min=0.1, max=1)
+        params.add(f"R", value=0.8, min=0.3, max=1)
         params.add(f"alpha", value=np.pi, min=0.0, max=2 * np.pi)
         params.add(f"delta", value=0, min=-np.pi / 2, max=np.pi / 2)
 
@@ -533,7 +539,7 @@ class sHG1G2:
             weights = np.ones(pc.mag.shape)
 
         out = lmfit.minimize(
-            residual,
+            residual_shg1g2,
             params,
             args=(
                 np.radians(pc.phase),
@@ -556,200 +562,403 @@ class sHG1G2:
             setattr(self, f"{name}_err", param.stderr)
         pc.fitted_models.add("sHG1G2")
 
+    def fit(self, pc, weights=None):
+        """Fit a phase curve using the sHG1G2 model."""
 
-def build_eqs_for_spins(x, filters=[], ph=[], ra=[], dec=[], rhs=[]):
-    """Build the system of equations to solve using the HG1G2 + spin model
+        params = lmfit.Parameters()
 
-    Parameters
-    ----------
-    x: list
-        List of parameters to fit for
-    filters: np.array
-        Array of size N containing the filtername for each measurement
-    ph: np.array
-        Array of size N containing phase angles
-    ra: np.array
-        Array of size N containing the RA (radian)
-    dec: np.array
-        Array of size N containing the Dec (radian)
-    rhs: np.array
-        Array of size N containing the actual measurements (magnitude)
+        for band in set(pc.band):
+            params.add(f"H{band}", value=15, min=0, max=30)
+            params.add(f"G1{band}", value=0.15, min=0, max=1.0)
+            params.add(f"G2{band}", value=0.15, min=0.0, max=1)
 
-    Returns
-    ----------
-    out: np.array
-        Array of size N containing (model - y)
+        # Fitting all bands at once with sHG1G2
+        params.add(f"R", value=0.8, min=0.3, max=1)
+        params.add(f"alpha", value=np.pi, min=0.0, max=2 * np.pi)
+        params.add(f"delta", value=0, min=-np.pi / 2, max=np.pi / 2)
 
-    Notes
-    ----------
-    the input `x` should start with filter independent variables,
-    that is (R, alpha, delta), followed by filter dependent variables,
-    that is (H, G1, G2). For example with two bands g & r:
+        if weights is None:
+            weights = np.ones(pc.mag.shape)
 
-    ```
-    x = [
-        R, alpha, delta,
-        h_g, g_1_g, g_2_g,
-        h_r, g_1_r, g_2_r
-    ]
-    ```
+        #       Scipy-fy
+        dict_params = lmfit_to_dict(params)
 
-    """
-    R, alpha, delta = x[0:3]
-    filternames = np.unique(filters)
+        param_names = list(dict_params.keys())
 
-    params = x[3:]
-    nparams = len(params) / len(filternames)
-    assert int(nparams) == nparams, "You need to input all parameters for all bands"
+        initial_guess = np.array([dict_params[k] for k in param_names])
 
-    params_per_band = np.reshape(params, (len(filternames), int(nparams)))
-    eqs = []
-    for index, filtername in enumerate(filternames):
-        mask = filters == filtername
+        lower_bounds = np.array([params[k].min for k in param_names])
+        upper_bounds = np.array([params[k].max for k in param_names])
 
-        myfunc = (
-            func_hg1g2_with_spin(
-                np.vstack([ph[mask].tolist(), ra[mask].tolist(), dec[mask].tolist()]),
-                params_per_band[index][0],
-                params_per_band[index][1],
-                params_per_band[index][2],
-                R,
-                alpha,
-                delta,
-            )
-            - rhs[mask]
+        # Diagnostic
+        for name, x0, lo, hi in zip(
+            param_names, initial_guess, lower_bounds, upper_bounds
+        ):
+            if not (lo <= x0 <= hi):
+                print(
+                    f"Initial guess for {name} out of bounds: {x0} not in [{lo}, {hi}]"
+                )
+        out = least_squares(
+            residual_shg1g2,
+            x0=initial_guess,
+            bounds=(lower_bounds, upper_bounds),
+            jac="2-point",
+            loss="soft_l1",
+            args=(
+                np.radians(pc.phase),
+                pc.mag,
+                weights,
+                pc.band,
+                np.radians(pc.ra),
+                np.radians(pc.dec),
+                param_names,
+            ),
         )
 
-        eqs = np.concatenate((eqs, myfunc))
+        # reconstruct parameter dictionary from scipy result
+        opt = dict(zip(param_names, out.x))
 
-    return np.ravel(eqs)
+        # FIXME
+        # --- estimate parameter uncertainties
+        J = out.jac
+        res = out.fun
+        dof = len(res) - len(out.x)
 
+        cov = np.linalg.pinv(J.T @ J) * np.sum(res**2) / dof
+        stderr = np.sqrt(np.diag(cov))
 
-def func_hg1g2(ph, h, g1, g2):
-    """Return f(H, G1, G2) part of the lightcurve in mag space
+        err_dict = dict(zip(param_names, stderr))
 
-    Parameters
-    ----------
-    ph: array-like
-        Phase angle in radians
-    h: float
-        Absolute magnitude in mag
-    G1: float
-        G1 parameter (no unit)
-    G2: float
-        G2 parameter (no unit)
+        # store parameters in object
+        rms = np.sqrt(np.mean(res**2))
+        setattr(self, "rms", rms)
+        for name, param in opt.items():
+            if name in ["alpha", "delta"]:
+                setattr(self, name, np.degrees(param))
+                setattr(self, f"{name}_err", np.degrees(err_dict[name]))
+            else:
+                setattr(self, name, param)
+                setattr(self, f"{name}_err", err_dict[name])
 
-    Returns
-    ----------
-    out: array of floats
-        H - 2.5 log(f(G1G2))
-    """
-    # Standard G1G2 part
-    func1 = (
-        g1 * phot.HG1G2._phi1(ph)
-        + g2 * phot.HG1G2._phi2(ph)
-        + (1 - g1 - g2) * phot.HG1G2._phi3(ph)
-    )
-    func1 = -2.5 * np.log10(func1)
-
-    return h + func1
+        pc.fitted_models.add("SOCCA")
 
 
-def spin_angle(ra, dec, alpha, delta):
-    return np.sin(dec) * np.sin(delta) + np.cos(dec) * np.cos(delta) * np.cos(
-        ra - alpha
-    )
+class SOCCA:
+    """SOCCA phase curve model."""
 
+    def __init__(
+        self,
+        H=np.nan,
+        G1=np.nan,
+        G2=np.nan,
+        period=np.nan,
+        alpha=np.nan,
+        delta=np.nan,
+        a_b=np.nan,
+        a_c=np.nan,
+        W0=np.nan,
+        t0=np.nan,
+        bands=None,
+        p0=None,
+        remap=False,
+        weights=None,
+    ):
+        """SOCCA phase curve model.
 
-def func_hg1g2_with_spin(pha, h, g1, g2, R, alpha, delta):
-    """Return f(H, G1, G2, R, alpha, delta) part of the lightcurve in mag space
+        Parameters
+        ----------
+        H: float
+            Absolute magnitude in mag
+        G1: float
+            G1 parameter (no unit)
+        G2: float
+            G2 parameter (no unit)
+        period: float
+            Sidereal rotation period (days)
+        alpha: float
+            RA of the spin (degree)
+        delta: float
+            Dec of the spin (degree)
+        a_b: float
+            Triaxial axes a/b ratio (no units)
+        a_c: float
+            Triaxial axes a/c ratio (no units)
+        W0: float
+            Initial rotation angle (degree)
+        t0: float
+            Reference epoch for rotation (JD)
+        p0: dict
+            Dictionary with guess estimates
+        """
+        self.NAME = "SOCCA"
+        self.PARAMS = (
+            "H",
+            "G1",
+            "G2",
+            "period",
+            "alpha",
+            "delta",
+            "a_b",
+            "a_c",
+            "W0",
+            "t0",
+        )
 
-    Parameters
-    ----------
-    pha: array-like [3, N]
-        List containing [phase angle in radians, RA in radians, Dec in radians]
-    h: float
-        Absolute magnitude in mag
-    G1: float
-        G1 parameter (no unit)
-    G2: float
-        G2 parameter (no unit)
-    R: float
-        Oblateness (no units)
-    alpha: float
-        RA of the spin (radian)
-    delta: float
-        Dec of the spin (radian)
+        if bands is None:
+            bands = [""]
 
-    Returns
-    ----------
-    out: array of floats
-        H - 2.5 log(f(G1G2)) - 2.5 log(f(R, spin))
-    """
-    ph = pha[0]
-    ra = pha[1]
-    dec = pha[2]
+        for band in bands:
+            setattr(self, f"H{band}", H)
+            setattr(self, f"G1{band}", G1)
+            setattr(self, f"G2{band}", G2)
+        self.period = period
+        self.alpha = alpha
+        self.delta = delta
+        self.a_b = a_b
+        self.a_c = a_c
+        self.W0 = W0
+        self.t0 = t0
 
-    # Standard HG1G2 part: h + f(alpha, G1, G2)
-    func1 = func_hg1g2(ph, h, g1, g2)
+        self.p0 = p0
+        if isinstance(p0, dict):
+            for k, v in p0.items():
+                setattr(self, k, v)
+        self.remap = remap
+        self.weights = weights
 
-    # Spin part
-    geo = spin_angle(ra, dec, alpha, delta)
-    func2 = 1 - (1 - R) * np.abs(geo)
-    func2 = 2.5 * np.log10(func2)
+    def eval(
+        self,
+        pc,
+        H=None,
+        G1=None,
+        G2=None,
+        period=None,
+        alpha=None,
+        delta=None,
+        a_b=None,
+        a_c=None,
+        W0=None,
+        t0=None,
+    ):
+        """SOCCA phase curve model.
 
-    return func1 + func2
+        Return f(H, G1, G2, period, alpha, delta, a_b, a_c, W0, t0) part of the lightcurve in mag space
 
+        Parameters
+        ----------
+        H: float
+            Absolute magnitude in mag
+        G1: float
+            G1 parameter (no unit)
+        G2: float
+            G2 parameter (no unit)
+        period: float
+            Sidereal rotation period (days)
+        alpha: float
+            Right ascension of the spin axis (degree)
+        delta: float
+            Declination of the spin axis (degree)
+        a_b: float
+            Triaxial axes a/b ratio (no units)
+        a_c: float
+            Triaxial axes a/c ratio (no units)
+        W0: float
+            Initial rotation angle (degree)
+        t0: float
+            Reference epoch for rotation (JD)
 
-def residual(pars, phase, mag, weights, bands, ra, dec):
-    """Build the system of equations to solve using the HG1G2 + spin model
+        Returns
+        ----------
+        out: array of floats
+            H - 2.5 log(f(G1G2)) - 2.5 log(f(R, spin))
+        """
+        phase = np.radians(pc.phase)
+        ra = np.radians(pc.ra)
+        dec = np.radians(pc.dec)
 
-    ```
-    x = [
-        R, alpha, delta,
-        h_g, g_1_g, g_2_g,
-        h_r, g_1_r, g_2_r
-    ]
-    ```
+        ra_s = np.radians(pc.ra_s)
+        dec_s = np.radians(pc.dec_s)
 
-    """
-    R, alpha, delta = pars["R"], pars["alpha"], pars["delta"]
-    # filternames = np.unique(bands)
+        epoch = pc.epoch
 
-    # params = x[3:]
-    params = [value for name, value in pars.items() if not name.startswith("delta")]
-    params += [delta]
-    params = params[:-3]
-    filternames = [
-        param.name[1:] for param in pars.values() if param.name.startswith("H")
-    ]
-    # params = list(pars.values())[:-3]
-    nparams = len(params) / len(filternames)
-    # assert int(nparams) == nparams, "You need to input all parameters for all bands"
+        period = self.period if period is None else period
+        alpha = np.radians(self.alpha) if alpha is None else np.radians(alpha)
+        delta = np.radians(self.delta) if delta is None else np.radians(delta)
+        a_b = self.a_b if a_b is None else a_b
+        a_c = self.a_c if a_c is None else a_c
+        W0 = np.radians(self.W0) if W0 is None else np.radians(W0)
+        t0 = self.t0 if t0 is None else t0
 
-    params_per_band = np.reshape(params, (len(filternames), int(nparams)))
-    eqs = []
-    for index, filtername in enumerate(filternames):
-        mask = bands == filtername
+        bands = np.asarray(pc.band)
+        mag = np.zeros(len(bands))
 
-        myfunc = (
-            func_hg1g2_with_spin(
-                np.vstack(
-                    [phase[mask].tolist(), ra[mask].tolist(), dec[mask].tolist()]
-                ),
-                params_per_band[index][0],
-                params_per_band[index][1],
-                params_per_band[index][2],
-                R,
+        for band in pc.bands:
+            mask = bands == band
+
+            Hval = H if H is not None else getattr(self, f"H{band}", None)
+            G1val = G1 if G1 is not None else getattr(self, f"G1{band}", None)
+            G2val = G2 if G2 is not None else getattr(self, f"G2{band}", None)
+
+            mag[mask] = func_socca(
+                [
+                    phase[mask],
+                    ra[mask],
+                    dec[mask],
+                    epoch[mask],
+                    ra_s[mask],
+                    dec_s[mask],
+                ],
+                Hval,
+                G1val,
+                G2val,
                 alpha,
                 delta,
+                period,
+                a_b,
+                a_c,
+                W0,
             )
-            - mag[mask]
-        ) / (1 / weights[mask])  # weighting by inverse mag_err
 
-        eqs = np.concatenate((eqs, myfunc))
+        return mag
 
-    return np.ravel(eqs)
+    def is_fittable(self, pc):
+        """Check whether phase curve can be fit with SOCCA model."""
+        _has_phase_and_mag(pc, self.NAME)
+
+        # Do we have RA and Dec?
+        if pc.ra is None or pc.dec is None:
+            assert pc.epoch is not None and pc.target is not None, (
+                f"Neither RA/Dec nor target nor observation epoch provided. Cannot fit {self.NAME} model."
+            )
+
+            print("No RA or Dec provided but epoch and target found.")
+            pc.get_ephems()
+
+        return True
+
+    def fit(self, pc):
+        """Fit a phase curve using the SOCCA model."""
+
+        ### Initialize with unbounded parameters ###
+        params = lmfit.Parameters()
+
+        # Fitting all bands at once with SOCCA
+        params.add("alpha", value=np.radians(self.alpha), vary=True)
+        params.add("delta", value=np.radians(self.delta), vary=True)
+        params.add("period", value=self.period, vary=True)
+        params.add("a_b", value=self.a_b, vary=True)
+        params.add("a_c", value=self.a_c, vary=True)
+        params.add("W0", value=np.radians(self.W0), vary=True)
+        # params.add("t0", value=self.t0, vary=False)
+
+        for band in np.unique(pc.band):
+            params.add(f"H{band}", value=getattr(self, f"H{band}"), vary=True)
+            params.add(f"G1{band}", value=getattr(self, f"G1{band}"), vary=True)
+            params.add(f"G2{band}", value=getattr(self, f"G2{band}"), vary=True)
+
+        ### Reparametrize part ###
+        if self.remap:
+            params_dict = lmfit_to_dict(params)
+            latent_dict = parameter_remapping(params_dict, physical_to_latent=True)
+            params = dict_to_lmfit(latent_dict, params)
+
+        lower, upper = build_bounds(remap=self.remap)
+        if self.remap:
+            fbase = ["H", "u_G1", "u_G2"]
+        else:
+            fbase = ["H", "G1", "G2"]
+        for band in pc.bands:
+            for base in fbase:
+                key = f"{base}{band}"
+                lower[key] = lower[base]
+                upper[key] = upper[base]
+        for base in fbase:
+            lower.pop(base, None)
+            upper.pop(base, None)
+
+        for name in params.keys():
+            params[name].min = lower[name]
+            params[name].max = upper[name]
+        if self.weights is None:
+            weights = np.ones(pc.mag.shape)
+        else:
+            weights = self.weights
+        #       Scipy-fy
+        dict_params = lmfit_to_dict(params)
+
+        param_names = list(dict_params.keys())
+
+        initial_guess = np.array([dict_params[k] for k in param_names])
+
+        lower_bounds = np.array([lower[k] for k in param_names])
+        upper_bounds = np.array([upper[k] for k in param_names])
+
+        # Diagnostic
+        for name, x0, lo, hi in zip(
+            param_names, initial_guess, lower_bounds, upper_bounds
+        ):
+            if not (lo <= x0 <= hi):
+                print(
+                    f"Initial guess for {name} out of bounds: {x0} not in [{lo}, {hi}]"
+                )
+        # print(initial_guess)
+        out = least_squares(
+            residual_socca,
+            x0=initial_guess,
+            bounds=(lower_bounds, upper_bounds),
+            jac="2-point",
+            loss="soft_l1",
+            args=(
+                np.radians(pc.phase),
+                pc.mag,
+                weights,
+                pc.band,
+                np.radians(pc.ra),
+                np.radians(pc.dec),
+                pc.epoch,
+                np.radians(pc.ra_s),
+                np.radians(pc.dec_s),
+                param_names,
+                self.remap,
+            ),
+        )
+
+        # reconstruct parameter dictionary from scipy result
+        latent_min = dict(zip(param_names, out.x))
+
+        # convert latent -> physical if needed
+        if self.remap:
+            physical_min = parameter_remapping(latent_min, physical_to_latent=False)
+        else:
+            physical_min = latent_min
+
+        # FIXME
+        # --- estimate parameter uncertainties
+        J = out.jac
+        res = out.fun
+        dof = len(res) - len(out.x)
+
+        cov = np.linalg.pinv(J.T @ J) * np.sum(res**2) / dof
+        stderr = np.sqrt(np.diag(cov))
+
+        err_dict = dict(zip(param_names, stderr))
+
+        # propagate if remapped
+        if self.remap:
+            err_dict = propagate_errors(latent_min, err_dict, filt_names=set(pc.bands))
+
+        # store parameters in object
+        rms = np.sqrt(np.mean(res**2))
+        setattr(self, "rms", rms)
+        for name, param in physical_min.items():
+            if name in ["alpha", "delta", "W0"]:
+                setattr(self, name, np.degrees(param))
+                setattr(self, f"{name}_err", np.degrees(err_dict[name]))
+            else:
+                setattr(self, name, param)
+                setattr(self, f"{name}_err", err_dict[name])
+
+        pc.fitted_models.add("SOCCA")
 
 
 def _has_phase_and_mag(pc, model):
@@ -758,9 +967,9 @@ def _has_phase_and_mag(pc, model):
     assert pc.mag is not None, f"No magnitudes provided. Cannot fit {model} model."
 
     if pc.phase is None:
-        assert (
-            pc.epoch is not None and pc.target is not None
-        ), f"Neither phase nor target nor observation epoch provided. Cannot fit {model} model."
+        assert pc.epoch is not None and pc.target is not None, (
+            f"Neither phase nor target nor observation epoch provided. Cannot fit {model} model."
+        )
 
         print("No phase angles provided but epoch and target found.")
         pc.get_ephems()

@@ -17,6 +17,8 @@ class PhaseCurve:
         epoch=None,
         ra=None,
         dec=None,
+        ra_s=None,
+        dec_s=None,
         band=None,
     ):
         """Create a phase curve and add observations to it.
@@ -45,6 +47,8 @@ class PhaseCurve:
         self.epoch = np.array(epoch) if epoch is not None else epoch
         self.ra = np.array(ra) if ra is not None else ra
         self.dec = np.array(dec) if dec is not None else dec
+        self.ra_s = np.array(ra_s) if ra_s is not None else ra_s
+        self.dec_s = np.array(dec_s) if dec_s is not None else dec_s
         self.band = np.array(band).astype(str) if band is not None else band
 
         if self.band is None:
@@ -67,7 +71,7 @@ class PhaseCurve:
         #     setattr(self, f"phase_min_{band}", obs_.phase.min())
         #     setattr(self, f"phase_max_{band}", obs_.phase.max())
 
-    def fit(self, models=None):
+    def fit(self, models=None, p0=None, remap=True, weights=None):
         """Fit the phase curve in the different bands with the different models."""
 
         if models is None:
@@ -80,10 +84,45 @@ class PhaseCurve:
                 )
 
             # Add photometric model instance to PhaseCurve and pass band information
-            setattr(self, model, getattr(phunk.models, model)(bands=set(self.band)))
+            # TBD: p0 for all models? or keep if .. else here?
+            if model == "SOCCA":
+                setattr(
+                    self,
+                    model,
+                    getattr(phunk.models, model)(
+                        bands=set(self.band),
+                        p0=p0,
+                        remap=remap,
+                        weights=weights,
+                    ),
+                )
+            else:
+                setattr(
+                    self,
+                    model,
+                    getattr(phunk.models, model)(bands=set(self.band)),
+                )
 
             if getattr(self, model).is_fittable(self):
                 getattr(self, model).fit(self)
+
+    def eval(self, model, **kwargs):
+        """Evaluate a photometric model."""
+
+        if hasattr(self, model):
+            model_obj = getattr(self, model)
+
+        else:
+            if model not in phunk.models.MODELS:
+                raise ValueError(
+                    f"Unknown model '{model}'. Expected one of {phunk.models.MODELS}"
+                )
+
+            model_class = getattr(phunk.models, model)
+
+            model_obj = model_class(bands=set(self.band))
+
+        return model_obj.eval(self, **kwargs)
 
     def get_ephems(self):
         """Query ephemerides of target at time of observation.
@@ -92,12 +131,20 @@ class PhaseCurve:
         ----
         Sets the 'phase', 'ra', and 'dec' attributes. Requires internet connection.
         """
+        c_AU_day = 173.14463267424034  # c in AU/day
+
         print("Querying ephemerides via IMCCE Miriade..")
         ephem = phunk.miriade.query(self.target.name, self.epoch)
 
-        self.phase = ephem["phase"]
-        self.ra = np.degrees(ephem["ra_j2000"])
-        self.dec = np.degrees(ephem["dec_j2000"])
+        self.phase = ephem["Phase"].values
+        self.ra = ephem["RA"].values
+        self.dec = ephem["DEC"].values
+        self.ra_s = ephem["RA_h"].values
+        self.dec_s = ephem["DEC_h"].values
+        self.Dhelio = ephem["Dhelio"].values
+        self.Dobs = ephem["Dobs"].values
+
+        self.epoch_ltc = self.epoch - self.Dobs / c_AU_day  # Light-time corrected epoch
 
     @property
     def bands(self):
